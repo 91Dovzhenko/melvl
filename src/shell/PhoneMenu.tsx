@@ -1,15 +1,20 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Icon, Ring } from '../ui/icons';
-import { counts, projectProgress, type ShellData } from '../lib/data';
-import { FUTURE, SECTIONS, SettingsPopover } from './Sidebar';
+import { useStore, useToday } from '../lib/store';
+import { counts, projectProgress, sortedAreas } from '../lib/views';
+import type { Project } from '../lib/types';
+import { FUTURE, menuProjects, SECTIONS, SettingsPopover } from './Sidebar';
 
 /** iPhone · Меню — отдельный экран. */
-export function PhoneMenu({ data, email }: { data: ShellData; email: string }) {
-  const c = counts(data.tasks);
+export function PhoneMenu({ email }: { email: string }) {
+  const store = useStore();
+  const today = useToday();
+  const c = counts(store, today);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  const loose = data.projects.filter((p) => !p.area_id);
+  const projects = menuProjects(store.projects);
+  const loose = projects.filter((p) => !p.area_id);
 
   return (
     <nav className="phone-menu" aria-label="Разделы">
@@ -48,37 +53,40 @@ export function PhoneMenu({ data, email }: { data: ShellData; email: string }) {
 
       {loose.length > 0 && (
         <div className="phone-card">
-          {loose.map((p) => (
-            <Link key={p.id} to={`/project/${p.id}`} className="phone-row project">
-              <Ring size={22} progress={projectProgress(p.id, data.tasks)} done={p.status === 'completed'} />
-              <span className="label">{p.name || 'Новый проект'}</span>
-              {p.is_quest && <Icon name="quest" size={14} color="#3D6A00" width={2.2} />}
-            </Link>
-          ))}
+          {loose.map((p) => <PhoneProject key={p.id} p={p} />)}
         </div>
       )}
 
-      {data.areas.map((a) => {
+      {sortedAreas(store).map((a) => {
         const open = !collapsed[a.id];
         return (
           <div className="phone-card" key={a.id}>
-            <button type="button" className="phone-row area" aria-expanded={open}
-              onClick={() => setCollapsed((m) => ({ ...m, [a.id]: open }))}>
-              <Icon name="area" size={22} color="#5F635C" />
-              <span className="label">{a.name || 'Новая область'}</span>
-              <Icon name="chevronDown" size={18} color="#8E9289" width={2}
-                style={{ transform: open ? undefined : 'rotate(-90deg)', transition: 'transform .15s' }} />
-            </button>
-            {open && data.projects.filter((p) => p.area_id === a.id).map((p) => (
-              <Link key={p.id} to={`/project/${p.id}`} className="phone-row project">
-                <Ring size={22} progress={projectProgress(p.id, data.tasks)} done={p.status === 'completed'} />
-                <span className="label">{p.name || 'Новый проект'}</span>
-                {p.is_quest && <Icon name="quest" size={14} color="#3D6A00" width={2.2} />}
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <Link to={`/area/${a.id}`} className="phone-row area" style={{ flex: 1 }}>
+                <Icon name="area" size={22} color="#5F635C" />
+                <span className="label">{a.name || 'Новая область'}</span>
               </Link>
-            ))}
+              <button type="button" className="icon-btn44" aria-expanded={open} aria-label={open ? 'Свернуть' : 'Развернуть'}
+                onClick={() => setCollapsed((m) => ({ ...m, [a.id]: open }))} style={{ marginRight: 4 }}>
+                <Icon name="chevronDown" size={18} color="#8E9289" width={2}
+                  style={{ transform: open ? undefined : 'rotate(-90deg)', transition: 'transform .15s' }} />
+              </button>
+            </div>
+            {open && projects.filter((p) => p.area_id === a.id).map((p) => <PhoneProject key={p.id} p={p} />)}
           </div>
         );
       })}
     </nav>
+  );
+}
+
+function PhoneProject({ p }: { p: Project }) {
+  const store = useStore();
+  return (
+    <Link to={`/project/${p.id}`} className="phone-row project">
+      <Ring size={22} progress={projectProgress(store, p.id)} done={p.status === 'completed'} />
+      <span className="label">{p.name || 'Новый проект'}</span>
+      {p.is_quest && <Icon name="quest" size={14} color="#3D6A00" width={2.2} />}
+    </Link>
   );
 }

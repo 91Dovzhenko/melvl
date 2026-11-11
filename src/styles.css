@@ -258,3 +258,116 @@ h1.title {
   box-shadow: 0 10px 24px rgba(21, 23, 26, .18);
 }
 .fab:disabled { cursor: default; }
+
+/* ───────── Список задач ───────── */
+.task-list { display: flex; flex-direction: column; }
+.row {
+  display: flex; align-items: flex-start; gap: 11px; padding: 4px 8px; margin: 0 -8px;
+  border-radius: 8px; min-height: 28px; cursor: default; user-select: none; -webkit-user-select: none;
+}
+.row:hover { background: var(--bg-quiet); }
+.row.selected, .row.selected:hover { background: var(--accent-bg); }
+.row-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.row-line { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; font-size: 14px; font-weight: 500; line-height: 20px; }
+.row-title { overflow-wrap: anywhere; }
+.row-sub { font-size: 12px; font-weight: 600; color: var(--text-muted); line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.muted { color: var(--icon-quiet); }
+.est { font-size: 12px; font-weight: 700; color: var(--text-2); background: var(--chip); border-radius: 999px; padding: 0 8px; line-height: 18px; white-space: nowrap; }
+.due-chip { font-size: 11px; font-weight: 800; color: var(--text-2); background: var(--chip); border-radius: 6px; padding: 0 6px; line-height: 18px; white-space: nowrap; }
+.today-sq { border-radius: 6px; background: var(--accent); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+
+.cb {
+  width: 16px; height: 16px; margin-top: 2px; border-radius: 4.5px; border: 1.5px solid var(--checkbox);
+  background: #FFFFFF; display: flex; align-items: center; justify-content: center; padding: 0;
+  cursor: pointer; flex-shrink: 0; box-sizing: border-box;
+}
+.cb.dashed { border-style: dashed; }
+.cb.done { border-color: var(--accent-dark); background: var(--accent); }
+
+.group { display: flex; flex-direction: column; }
+.groups { display: flex; flex-direction: column; gap: 22px; padding-top: 4px; }
+.group-head {
+  display: flex; align-items: center; gap: 10px; padding-bottom: 7px; border-bottom: 1px solid var(--line); margin-bottom: 4px;
+}
+.group-head h2 {
+  margin: 0; font-size: 15px; font-weight: 800; letter-spacing: -0.01em; min-width: 0;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.group-head a { color: inherit; text-decoration: none; }
+.quest-tag { display: flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 800; color: var(--accent-dark); }
+
+/* Карточка задачи: радиус 16, отступ 14/16/12, вылет −16 */
+.card {
+  position: relative; margin: 8px -16px; padding: 14px 16px 12px; border-radius: 16px; background: #FFFFFF;
+  border: 1px solid var(--line); box-shadow: 0 10px 30px rgba(21, 23, 26, .10);
+  display: flex; flex-direction: column; gap: 6px;
+}
+.card-head { display: flex; align-items: flex-start; gap: 11px; }
+.card-head .cb { margin-top: 3px; }
+.card textarea {
+  border: 0; outline: none; resize: none; padding: 0; margin: 0; background: transparent; color: inherit;
+  font-family: inherit; overflow: hidden; width: 100%;
+}
+.card-title { flex: 1; font-size: 15px; font-weight: 600; line-height: 22px; }
+.card-title::placeholder { color: var(--icon-quiet); }
+.card-notes { margin-left: 27px !important; width: calc(100% - 27px) !important; font-size: 14px; font-weight: 500; line-height: 1.55; color: var(--text-2); min-height: 22px; }
+.card-notes::placeholder { color: var(--icon-quiet); }
+.card-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding-left: 27px; margin-top: 18px; }
+.card-chips { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.card-buttons { display: flex; align-items: center; gap: 2px; }
+.prop-chip {
+  height: 26px; border: 1px solid transparent; background: var(--chip); border-radius: 999px; padding: 0 10px 0 7px;
+  display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: var(--text); box-sizing: border-box; white-space: nowrap;
+}
+.prop-btn {
+  width: 32px; height: 30px; border: 0; background: transparent; border-radius: 9px;
+  display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0;
+}
+.prop-btn:hover:not(:disabled) { background: var(--chip); }
+.prop-btn:disabled { cursor: default; opacity: .4; }
+
+/* Свойства проекта и заметки */
+.props { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pill {
+  height: 28px; border: 0; background: var(--chip); border-radius: 999px; padding: 0 12px 0 10px;
+  display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text-muted); box-sizing: border-box;
+}
+.pill b { font-weight: 800; color: var(--text); }
+.pill.dashed { border: 1px dashed var(--checkbox); background: transparent; font-weight: 700; }
+.pill:disabled { cursor: default; }
+.notes-edit {
+  margin: 4px 0 0; padding: 0; border: 0; outline: none; resize: none; background: transparent; overflow: hidden;
+  font-family: inherit; font-size: 14px; font-weight: 500; line-height: 1.55; color: var(--text-2); max-width: 640px; width: 100%;
+}
+.notes-edit::placeholder { color: var(--icon-quiet); }
+.title-edit {
+  margin: 0; padding: 0; border: 0; outline: none; resize: none; background: transparent; overflow: hidden; width: 100%;
+  font-family: var(--font-display); font-size: 28px; font-weight: 600; letter-spacing: -0.03em; line-height: 34px; color: var(--text);
+}
+.title-edit::placeholder { color: var(--icon-quiet); }
+.kbd { display: inline-block; font-size: 13px; font-weight: 800; color: var(--text); background: var(--chip); border: 1px solid var(--line-menu); border-radius: 7px; padding: 1px 7px; margin: 0 2px; }
+.hint-center { flex: 1; display: flex; align-items: center; justify-content: center; padding: 140px 0; font-size: 15px; font-weight: 700; color: var(--text-2); text-align: center; }
+.foot-note { margin: 8px 0 0; font-size: 13px; font-weight: 600; color: var(--text-muted); }
+.link-btn { align-self: flex-start; margin-top: 18px; margin-left: -8px; border: 0; background: transparent; border-radius: 8px; padding: 4px 8px; font-size: 13px; font-weight: 700; color: var(--text-muted); cursor: pointer; }
+.link-btn:hover { background: var(--chip); }
+.seg { display: inline-flex; background: var(--chip); border-radius: 12px; padding: 4px; gap: 4px; }
+.seg button { height: 28px; border: 0; background: transparent; border-radius: 9px; padding: 0 12px; font-size: 13px; font-weight: 600; color: var(--text-2); cursor: pointer; }
+.seg button[aria-pressed="true"] { background: #FFFFFF; color: var(--text); box-shadow: 0 1px 3px rgba(21, 23, 26, .12); }
+
+/* Строки проектов в области */
+.prow { display: flex; align-items: center; gap: 12px; padding: 7px 8px; margin: 0 -8px; border-radius: 10px; text-decoration: none; color: var(--text); }
+.prow:hover { background: var(--bg-quiet); }
+.prow .name { font-size: 15px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.count-chip { font-size: 11px; font-weight: 800; color: var(--text-muted); background: var(--chip); border-radius: 6px; padding: 0 6px; line-height: 18px; flex-shrink: 0; }
+
+/* iPhone: строки мин. 44, чекбокс 22, радиус 6 */
+.row-phone { min-height: 44px; padding: 10px 8px; gap: 12px; }
+.row-phone .row-line { font-size: 16px; line-height: 22px; }
+.row-phone .row-sub { font-size: 13px; line-height: 18px; }
+.cb.cb-phone { width: 22px; height: 22px; border-radius: 6px; margin-top: 0; }
+.card-phone { margin: 8px -8px; }
+.card-phone .card-title { font-size: 18px; line-height: 24px; }
+.card-phone .card-notes { font-size: 16px; margin-left: 33px !important; width: calc(100% - 33px) !important; }
+.card-phone .card-foot { padding-left: 0; }
+.phone .groups { gap: 18px; }
+.phone .group-head h2 { font-size: 16px; }
