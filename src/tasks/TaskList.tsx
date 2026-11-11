@@ -1,8 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Icon, type IconName } from '../ui/icons';
 import { useStore, useToday } from '../lib/store';
-import { dueChip, fmtMin, shortDate } from '../lib/dates';
-import { projectName } from '../lib/views';
+import { addDays, dueChip, fmtMin, shortDate } from '../lib/dates';
+import { projectName, skillOf } from '../lib/views';
+import { EstimatePicker, SkillGlyph, SkillPicker, WhenPicker } from './pickers';
+import { MovePicker, TaskContextMenu, useTaskActions } from './actions';
 import type { Task } from '../lib/types';
 import { useEditing } from './editing';
 import { useIsPhone } from '../ui/useIsPhone';
@@ -12,6 +14,8 @@ export type RowMode = {
   showProject?: boolean;
   /** Метки срока перед названием (экран проекта). */
   dueChips?: boolean;
+  /** Навык виден всегда (Журнал), иначе — при наведении. */
+  alwaysSkill?: boolean;
 };
 
 /** Список задач с выделением, раскрытием карточки и местом для новой задачи. */
@@ -65,6 +69,8 @@ export function TaskRow({ task, mode }: { task: Task; mode: RowMode }) {
   const done = task.status === 'completed';
   const selected = ed.selectedId === task.id;
   const sub = mode.showProject ? projectName(store, task.project_id) : '';
+  const skill = skillOf(store, task).skill;
+  const [menuAt, setMenuAt] = useState<{ x: number; y: number } | null>(null);
 
   let chip: React.ReactNode = null;
   if (mode.dueChips) {
@@ -76,7 +82,14 @@ export function TaskRow({ task, mode }: { task: Task; mode: RowMode }) {
   return (
     <div className={'row' + (selected ? ' selected' : '') + (phone ? ' row-phone' : '')}
       onClick={() => (phone ? ed.open(task.id) : ed.select(task.id))}
-      onDoubleClick={() => ed.open(task.id)}>
+      onDoubleClick={() => ed.open(task.id)}
+      onContextMenu={(e) => {
+        if (phone) return;
+        e.preventDefault();
+        ed.select(task.id);
+        setMenuAt({ x: e.clientX, y: e.clientY });
+      }}>
+      {menuAt && <TaskContextMenu task={task} at={menuAt} onClose={() => setMenuAt(null)} />}
       <Checkbox task={task} size={phone ? 'phone' : 'mac'} />
       <div className="row-body" style={{ opacity: done ? 0.42 : 1 }}>
         <div className="row-line">
@@ -84,6 +97,11 @@ export function TaskRow({ task, mode }: { task: Task; mode: RowMode }) {
           <span className="row-title">{task.title || <span className="muted">Без названия</span>}</span>
           {task.notes.trim() && <Icon name="note" size={13} color="#8E9289" width={1.9} />}
           {task.estimate_min !== null && <span className="est">{fmtMin(task.estimate_min)}</span>}
+          {skill && !phone && (
+            <span className={'skill-pill' + (mode.alwaysSkill ? '' : ' hover-only')}>
+              <SkillGlyph skill={skill} size={12} color="#3D6A00" />{skill.name}
+            </span>
+          )}
         </div>
         {sub && <span className="row-sub" title={sub}>{sub}</span>}
       </div>
@@ -101,6 +119,7 @@ function autosize(el: HTMLTextAreaElement | null) {
 export function TaskCard({ task }: { task?: Task }) {
   const store = useStore();
   const ed = useEditing();
+  const act = useTaskActions();
   const today = useToday();
   const phone = useIsPhone();
   const [title, setTitle] = useState(task?.title ?? '');
@@ -126,6 +145,11 @@ export function TaskCard({ task }: { task?: Task }) {
   };
   const commitRef = useRef(commit);
   commitRef.current = commit;
+  const { setCommit } = ed;
+  useEffect(() => {
+    setCommit(() => commitRef.current());
+    return () => setCommit(null);
+  }, [setCommit]);
 
   useEffect(() => {
     const el = titleRef.current;
@@ -152,26 +176,36 @@ export function TaskCard({ task }: { task?: Task }) {
     };
   }, []);
 
-  const chips: { key: string; node: React.ReactNode }[] = [];
-  if (fields.someday) chips.push({ key: 'when', node: <><Icon name="someday" size={14} color="#3E423C" width={1.9} />Когда-нибудь</> });
+  // Свойства: у сохранённой задачи — сразу в базу, у новой — в черновик.
+  const set = (changes: Partial<Task>) => (task ? store.patch('tasks', task.id, changes) : ed.patchDraft(changes));
+  const [pop, setPop] = useState<{ kind: PropKind; anchor: HTMLElement } | null>(null);
+  const openPop = (kind: PropKind) => (e: React.MouseEvent<HTMLElement>) => setPop({ kind, anchor: e.currentTarget });
+  const sk = skillOf(store, { skill_id: fields.skill_id ?? null, project_id: fields.project_id ?? null });
+  const inheritedSkill = skillOf(store, { skill_id: null, project_id: fields.project_id ?? null }).skill;
+
+  const chips: { key: PropKind; cls?: string; label: string; node: React.ReactNode }[] = [];
+  if (fields.someday) chips.push({ key: 'when', label: 'Когда', node: <><Icon name="someday" size={14} color="#3E423C" width={1.9} />Когда-нибудь</> });
   else if (fields.when_date) {
     const isTodayDate = fields.when_date <= today;
     chips.push({
-      key: 'when',
+      key: 'when', label: 'Когда',
       node: isTodayDate
         ? <><TodaySquare size={16} />{fields.when_evening ? 'Сегодня вечером' : 'Сегодня'}</>
-        : <><Icon name="when" size={14} color="#3E423C" width={1.9} />{shortDate(fields.when_date)}</>,
+        : <><Icon name="when" size={14} color="#3E423C" width={1.9} />{fields.when_date === addDays(today, 1) ? 'Завтра' : shortDate(fields.when_date)}</>,
     });
   }
-  if (fields.estimate_min != null) chips.push({ key: 'est', node: <><Icon name="estimate" size={14} color="#3E423C" width={1.9} />{fmtMin(fields.estimate_min)}</> });
-  if (fields.project_id) chips.push({ key: 'proj', node: <><Icon name="project" size={14} color="#3E423C" width={1.9} />{projectName(store, fields.project_id)}</> });
+  if (fields.estimate_min != null) chips.push({ key: 'est', label: 'Оценка', node: <><Icon name="estimate" size={14} color="#3E423C" width={1.9} />{fmtMin(fields.estimate_min)}</> });
+  if (sk.skill) chips.push({
+    key: 'skill', cls: 'skill', label: 'Навык',
+    node: <><SkillGlyph skill={sk.skill} size={14} color="#3D6A00" />{sk.skill.name}{sk.inherited && <span className="sub">· из проекта</span>}</>,
+  });
+  if (fields.project_id) chips.push({ key: 'proj', label: 'Проект', node: <><Icon name="project" size={14} color="#3E423C" width={1.9} />{projectName(store, fields.project_id)}</> });
 
-  const unset: { key: string; icon: IconName; label: string }[] = [];
+  const unset: { key: PropKind; icon: IconName; label: string }[] = [];
   if (!fields.when_date && !fields.someday) unset.push({ key: 'when', icon: 'when', label: 'Когда' });
   if (fields.estimate_min == null) unset.push({ key: 'est', icon: 'estimate', label: 'Оценка' });
-  unset.push({ key: 'skill', icon: 'skill', label: 'Навык' });
+  if (!sk.skill) unset.push({ key: 'skill', icon: 'skill', label: 'Навык' });
   if (!fields.project_id) unset.push({ key: 'proj', icon: 'project', label: 'Переместить в проект' });
-  unset.push({ key: 'repeat', icon: 'repeat', label: 'Повтор' });
 
   return (
     <div className={'card' + (phone ? ' card-phone' : '')} ref={ref}>
@@ -190,19 +224,44 @@ export function TaskCard({ task }: { task?: Task }) {
         aria-label="Заметки" onChange={(e) => setNotes(e.target.value)} />
       <div className="card-foot">
         <div className="card-chips">
-          {chips.map((c) => <span key={c.key} className="prop-chip">{c.node}</span>)}
+          {chips.map((c) => (
+            <button key={c.key} type="button" className={'prop-chip' + (c.cls ? ' ' + c.cls : '')} aria-label={`${c.label}: изменить`}
+              onClick={openPop(c.key)}>{c.node}</button>
+          ))}
         </div>
         <div className="card-buttons">
           {unset.map((u) => (
-            <button key={u.key} type="button" className="prop-btn" aria-label={u.label} title={`${u.label} — следующий пункт сборки`} disabled>
+            <button key={u.key} type="button" className="prop-btn" aria-label={u.label} title={u.label} onClick={openPop(u.key)}>
               <Icon name={u.icon} size={17} color="#3E423C" />
             </button>
           ))}
+          <button type="button" className="prop-btn" aria-label="Повтор" title="Повтор — п. 5 сборки" disabled>
+            <Icon name="repeat" size={17} color="#3E423C" />
+          </button>
           <button type="button" className="prop-btn" aria-label="Дедлайн" title="Дедлайн — этап 3" disabled>
             <Icon name="deadline" size={17} color="#8E9289" />
           </button>
         </div>
       </div>
+      {pop?.kind === 'when' && (
+        <WhenPicker anchor={pop.anchor} onClose={() => setPop(null)} onPick={set}
+          value={{ when_date: fields.when_date ?? null, when_evening: !!fields.when_evening, someday: !!fields.someday }} />
+      )}
+      {pop?.kind === 'est' && (
+        <EstimatePicker anchor={pop.anchor} onClose={() => setPop(null)} value={fields.estimate_min ?? null}
+          onPick={(v) => set({ estimate_min: v })} />
+      )}
+      {pop?.kind === 'skill' && (
+        <SkillPicker anchor={pop.anchor} onClose={() => setPop(null)} value={fields.skill_id ?? null} inherited={inheritedSkill}
+          onPick={(id) => set({ skill_id: id })} />
+      )}
+      {pop?.kind === 'proj' && (
+        <MovePicker anchor={pop.anchor} onClose={() => setPop(null)}
+          task={{ project_id: fields.project_id ?? null, area_id: fields.area_id ?? null }}
+          onPick={(to) => (task ? act.move(task, to) : ed.patchDraft(to))} />
+      )}
     </div>
   );
 }
+
+type PropKind = 'when' | 'est' | 'skill' | 'proj';

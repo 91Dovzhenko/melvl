@@ -12,6 +12,7 @@ import { Placeholder } from './screens/Section';
 import { Popover, Sidebar, useCreateList } from './shell/Sidebar';
 import { PhoneMenu } from './shell/PhoneMenu';
 import { EditingProvider, useEditing } from './tasks/editing';
+import { TaskActionBar, TaskPropPicker } from './tasks/actions';
 import { Icon, Ring } from './ui/icons';
 import { useIsPhone } from './ui/useIsPhone';
 
@@ -96,10 +97,21 @@ const ROUTES = [
   <Route key="area" path="/area/:id" element={<AreaScreen />} />,
 ];
 
+/** Задача, раскрытая сейчас в карточке (не новая). */
+function useOpenTask() {
+  const ed = useEditing();
+  const store = useStore();
+  return ed.editingId ? store.tasks.find((t) => t.id === ed.editingId) ?? null : null;
+}
+
 function Shell({ email }: { email: string }) {
   const phone = useIsPhone();
   const ed = useEditing();
+  const openTask = useOpenTask();
   const loc = useLocation();
+  const store = useStore();
+  const selectedTask = ed.selectedId ? store.tasks.find((t) => t.id === ed.selectedId) ?? null : null;
+  const [barPop, setBarPop] = useState<{ kind: 'when' | 'move'; anchor: HTMLElement } | null>(null);
   useShortcuts();
 
   // Выделение и раскрытая карточка не переходят в другой раздел.
@@ -128,16 +140,25 @@ function Shell({ email }: { email: string }) {
           </Routes>
         </div>
         <div className="toolbar">
-          <button type="button" className="tool" aria-label="Новая задача" title="Новая задача — N или пробел"
-            onClick={() => ed.requestNew()}>
-            <Icon name="plus" size={18} color="#3E423C" width={2} />
-          </button>
-          <button type="button" className="tool" aria-label="Когда" title="Когда — следующий пункт сборки" disabled>
-            <Icon name="when" size={18} color="#3E423C" />
-          </button>
-          <button type="button" className="tool" aria-label="Переместить" title="Переместить — следующий пункт сборки" disabled>
-            <Icon name="move" size={18} color="#3E423C" />
-          </button>
+          {openTask ? <TaskActionBar task={openTask} /> : (
+            <>
+              <button type="button" className="tool" aria-label="Новая задача" title="Новая задача — N или пробел"
+                onClick={() => ed.requestNew()}>
+                <Icon name="plus" size={18} color="#3E423C" width={2} />
+              </button>
+              <button type="button" className="tool" aria-label="Когда" title={selectedTask ? 'Когда' : 'Когда — выделите задачу'}
+                disabled={!selectedTask} onClick={(e) => setBarPop({ kind: 'when', anchor: e.currentTarget })}>
+                <Icon name="when" size={18} color="#3E423C" />
+              </button>
+              <button type="button" className="tool" aria-label="Переместить" title={selectedTask ? 'Переместить' : 'Переместить — выделите задачу'}
+                disabled={!selectedTask} onClick={(e) => setBarPop({ kind: 'move', anchor: e.currentTarget })}>
+                <Icon name="move" size={18} color="#3E423C" />
+              </button>
+              {barPop && selectedTask && (
+                <TaskPropPicker task={selectedTask} kind={barPop.kind} anchor={barPop.anchor} onClose={() => setBarPop(null)} />
+              )}
+            </>
+          )}
         </div>
       </main>
     </div>
@@ -146,6 +167,8 @@ function Shell({ email }: { email: string }) {
 
 function PhoneList({ children }: { children: React.ReactNode }) {
   const loc = useLocation();
+  const ed = useEditing();
+  const openTask = useOpenTask();
   return (
     <div className="phone list-bg" key={loc.pathname}>
       <div className="phone-list">
@@ -154,7 +177,7 @@ function PhoneList({ children }: { children: React.ReactNode }) {
         </Link>
         {children}
       </div>
-      <PhoneFab />
+      {openTask ? <TaskActionBar task={openTask} floating /> : !ed.draft && <PhoneFab />}
     </div>
   );
 }

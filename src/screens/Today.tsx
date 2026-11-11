@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useStore, useToday } from '../lib/store';
-import { isListed, isToday, projectProgress, todayGroups } from '../lib/views';
+import { isListed, isToday, projectProgress, todayGroups, todaySums } from '../lib/views';
+import { TodaySumBlock } from '../ui/Sums';
 import { TaskList } from '../tasks/TaskList';
 import { useEditing, useNewTaskContext } from '../tasks/editing';
 import { Icon, Ring } from '../ui/icons';
@@ -34,16 +35,17 @@ export function Today() {
 
   return (
     <>
-      <BadgeHeader icon="today" title="Сегодня" lime right={
+      <BadgeHeader icon="today" title="Сегодня" lime right={list.length > 0 ? <TodaySumBlock {...todaySums(list)} /> : undefined} />
+
+      <div className="view-row">
+        <div className="events-slot">
+          <Icon name="when" size={16} color="#8E9289" />
+          <span>События календаря — появятся на этапе 3</span>
+        </div>
         <div className="seg" role="group" aria-label="Вид">
           <button type="button" aria-pressed={!flat} onClick={() => choose('projects')}>По проектам</button>
           <button type="button" aria-pressed={flat} onClick={() => choose('list')}>Списком</button>
         </div>
-      } />
-
-      <div className="events-slot">
-        <Icon name="when" size={16} color="#8E9289" />
-        <span>События календаря — появятся на этапе 3</span>
       </div>
 
       {groups.length === 0 && !hasDraftTop ? (

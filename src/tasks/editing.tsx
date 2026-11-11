@@ -25,7 +25,13 @@ type Editing = {
   close: () => void;
   requestNew: () => void;
   saveDraft: (title: string, notes: string) => void;
+  /** Поменять свойства новой (ещё не сохранённой) задачи. */
+  patchDraft: (changes: Partial<Task>) => void;
   register: (ctx: NewTaskContext | null) => void;
+  /** Раскрытая карточка сообщает, как сохранить свои правки (для действий панели). */
+  setCommit: (fn: (() => void) | null) => void;
+  /** Сохранить и закрыть раскрытую карточку. */
+  commitOpen: () => void;
 };
 
 const Ctx = createContext<Editing | null>(null);
@@ -43,6 +49,9 @@ export function EditingProvider({ children }: { children: React.ReactNode }) {
   const ctxRef = useRef<NewTaskContext | null>(null);
 
   const register = useCallback((ctx: NewTaskContext | null) => { ctxRef.current = ctx; }, []);
+  const commitRef = useRef<(() => void) | null>(null);
+  const setCommit = useCallback((fn: (() => void) | null) => { commitRef.current = fn; }, []);
+  const commitOpen = useCallback(() => { commitRef.current?.(); }, []);
 
   const requestNew = useCallback(() => {
     const ctx = ctxRef.current;
@@ -77,8 +86,9 @@ export function EditingProvider({ children }: { children: React.ReactNode }) {
     select: (id) => setSelected(id),
     open: (id) => { setDraft(null); setSelected(id); setEditing(id); },
     close: () => setEditing(null),
-    requestNew, saveDraft, register,
-  }), [selectedId, editingId, draft, requestNew, saveDraft, register]);
+    requestNew, saveDraft, register, setCommit, commitOpen,
+    patchDraft: (changes) => setDraft((d) => (d ? { ...d, fields: { ...d.fields, ...changes } } : d)),
+  }), [selectedId, editingId, draft, requestNew, saveDraft, register, setCommit, commitOpen]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

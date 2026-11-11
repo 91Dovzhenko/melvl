@@ -18,7 +18,7 @@ export const PREVIEW_SEED: Partial<Data> = {
     { id: 'a2', name: 'Учёба', sort_order: 2, deleted_at: null },
   ],
   projects: [
-    { id: 'p1', area_id: 'a1', name: 'Запуск нового лендинга', notes: 'Черновик структуры готов.', default_skill_id: null, is_quest: false, quest_estimate_min: null, status: 'open', completed_at: null, logged_at: null, sort_order: 1, deleted_at: null },
+    { id: 'p1', area_id: 'a1', name: 'Запуск нового лендинга', notes: 'Черновик структуры готов.', default_skill_id: 's8', is_quest: false, quest_estimate_min: null, status: 'open', completed_at: null, logged_at: null, sort_order: 1, deleted_at: null },
     { id: 'p2', area_id: 'a1', name: 'Квартальный отчёт для команды с очень длинным названием', notes: '', default_skill_id: null, is_quest: true, quest_estimate_min: 480, status: 'open', completed_at: null, logged_at: null, sort_order: 2, deleted_at: null },
     { id: 'p3', area_id: 'a2', name: 'Курс по рисованию', notes: '', default_skill_id: null, is_quest: false, quest_estimate_min: null, status: 'open', completed_at: null, logged_at: null, sort_order: 1, deleted_at: null },
   ],
@@ -33,5 +33,10 @@ export const PREVIEW_SEED: Partial<Data> = {
     task({ title: 'Позвонить в сервис', when_date: t, estimate_min: 15 }),
     task({ title: 'Идея: заметки голосом' }),
   ],
-  skills: [],
+  skills: ([
+    ['Упаковка', 'creator', 'frame'], ['Сценарий', 'creator', 'pencil'], ['Речь на камеру', 'creator', 'mic'],
+    ['Съёмка', 'creator', 'video'], ['Монтаж', 'creator', 'scissors'], ['Маркетинг', 'creator', 'megaphone'],
+    ['ИИ и агентные системы', 'creator', 'sparkles'], ['Продукт', 'profession', 'cube'],
+    ['Внедрение ИИ', 'profession', 'gear'], ['Финансы', 'profession', 'chart'],
+  ] as const).map(([name, branch, icon], i) => ({ id: `s${i + 1}`, name, branch, icon, active: true, sort_order: i + 1, deleted_at: null })),
 };

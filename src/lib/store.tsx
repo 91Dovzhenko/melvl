@@ -22,6 +22,7 @@ type Store = Data & {
 
 type ToastAction = { label: string; run: () => void };
 type UndoStep =
+  | { kind: 'insert'; table: TableName; id: string }
   | { kind: 'remove'; table: TableName; row: { id: string } }
   | { kind: 'patch'; table: TableName; id: string; prev: Record<string, unknown> };
 
@@ -113,6 +114,7 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
 
   const insert = useCallback(<T extends TableName>(table: T, row: Partial<Tables[T]>) => {
     const full = defaults(table, row);
+    recorder.current?.push({ kind: 'insert', table, id: full.id });
     setTable(table, (rows) => [...rows, full]);
     if (supabase && !offline) {
       const payload = { ...full } as Record<string, unknown>;
@@ -170,7 +172,9 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
     const entry = undoStack.current.pop();
     if (!entry) return false;
     for (const step of [...entry.steps].reverse()) {
-      if (step.kind === 'remove') {
+      if (step.kind === 'insert') {
+        remove(step.table, step.id);
+      } else if (step.kind === 'remove') {
         const row = { ...step.row, deleted_at: null };
         setTable(step.table, (rows) => (rows.some((r) => r.id === row.id) ? rows : [...rows, row as never]));
         if (supabase && !offline) {
@@ -184,7 +188,7 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
     }
     setToastMsg(null);
     return true;
-  }, [offline, patch, setTable, toast]);
+  }, [offline, patch, remove, setTable, toast]);
 
   const withUndo = useCallback((message: string, fn: () => void) => {
     recorder.current = [];

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useStore } from '../lib/store';
 import { projectProgress } from '../lib/views';
 import { useNewTaskContext } from '../tasks/editing';
@@ -28,7 +28,7 @@ export function AreaScreen() {
     },
   });
 
-  if (!a) return <div className="hint-center">{store.loading ? '' : 'Область не найдена'}</div>;
+  if (!a) return (store.loading ? <div className="hint-center" /> : <Navigate to="/today" replace />);
   const isNew = (loc.state as { rename?: boolean } | null)?.rename;
 
   return (

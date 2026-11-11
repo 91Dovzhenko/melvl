@@ -82,3 +82,38 @@ export function orderAfter(list: Task[], after: Task | undefined, key: 'sort_ord
   const next = sorted[i + 1];
   return next ? (after[key] + next[key]) / 2 : after[key] + 1;
 }
+
+/** Навык задачи: свой или «из проекта» (если у задачи не задан, а у проекта есть навык по умолчанию). */
+export function skillOf(d: Pick<Data, 'skills' | 'projects'>, t: Pick<Task, 'skill_id' | 'project_id'>) {
+  if (t.skill_id) return { skill: d.skills.find((s) => s.id === t.skill_id), inherited: false };
+  const p = t.project_id ? d.projects.find((x) => x.id === t.project_id) : undefined;
+  const skill = p?.default_skill_id ? d.skills.find((s) => s.id === p.default_skill_id) : undefined;
+  return { skill, inherited: !!skill };
+}
+
+const est = (t: Task) => t.estimate_min ?? 0;
+
+/**
+ * Блок «Сегодня» (спецификация, «Суммы часов»): осталось — оценки невыполненных задач дня (с «Вечером»);
+ * запланировано — все задачи дня, включая выполненные; задачи N из M; полоса — доля выполненных часов.
+ */
+export function todaySums(list: Task[]) {
+  const planned = list.reduce((m, t) => m + est(t), 0);
+  const left = list.filter((t) => t.status === 'open').reduce((m, t) => m + est(t), 0);
+  const done = list.filter((t) => t.status === 'completed').length;
+  return { left, planned, done, total: list.length, pct: planned ? (planned - left) / planned : 0 };
+}
+
+/**
+ * Проект и область: сегодня (включая просроченные), завтра, позже (после завтра и без даты), всего.
+ * Выполненные, «Когда-нибудь» и задачи без оценки не считаются.
+ */
+export function planSums(tasks: Task[], today: string, tomorrow: string) {
+  const open = tasks.filter((t) => isListed(t) && t.status === 'open' && !t.someday);
+  const sum = (f: (t: Task) => boolean) => open.filter(f).reduce((m, t) => m + est(t), 0);
+  const tToday = sum((t) => t.when_date !== null && t.when_date <= today);
+  const tTomorrow = sum((t) => t.when_date === tomorrow);
+  const tLater = sum((t) => t.when_date === null || t.when_date > tomorrow);
+  return { today: tToday, tomorrow: tTomorrow, later: tLater, total: tToday + tTomorrow + tLater,
+    noEstimate: open.filter((t) => t.estimate_min === null).length };
+}

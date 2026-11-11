@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Icon, type IconName } from '../ui/icons';
 import { useIsPhone } from '../ui/useIsPhone';
+import { Pop, PopItem } from '../ui/Pop';
 
 /** Шапка раздела с квадратным значком (Входящие, Сегодня, Планы, Журнал). */
 export function BadgeHeader({ icon, title, lime, right }: { icon: IconName; title: string; lime?: boolean; right?: React.ReactNode }) {
@@ -64,33 +65,23 @@ export function EditableNotes({ value, onSave }: { value: string; onSave: (v: st
   );
 }
 
-/** Меню «…» — белое, радиус 14. */
+/** Меню «…» проекта/области: на Mac — белое меню у кнопки (не выходит за экран), на iPhone — нижний лист. */
 export function MoreMenu({ label, items }: { label: string; items: { label: string; icon: IconName; onClick: () => void }[] }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
-    document.addEventListener('mousedown', onDown);
-    document.addEventListener('keydown', onKey);
-    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); };
-  }, [open]);
+  const btn = useRef<HTMLButtonElement>(null);
   return (
-    <div ref={ref} style={{ position: 'relative', flexShrink: 0 }}>
-      <button type="button" className="tool" aria-label={label} title={label} aria-expanded={open}
-        style={{ width: 34, height: 30, marginTop: 2 }} onClick={() => setOpen((o) => !o)}>
+    <>
+      <button ref={btn} type="button" className="tool" aria-label={label} title={label} aria-expanded={open}
+        style={{ width: 34, height: 30, marginTop: 2, flexShrink: 0 }} onClick={() => setOpen((o) => !o)}>
         <Icon name="more" size={18} color="#5F635C" width={3} />
       </button>
       {open && (
-        <div className="popover" role="menu" style={{ top: 36, left: 0 }}>
+        <Pop anchor={btn.current} onClose={() => setOpen(false)} variant="light" width={220} title={label}>
           {items.map((it) => (
-            <button key={it.label} type="button" role="menuitem" onClick={() => { setOpen(false); it.onClick(); }}>
-              <Icon name={it.icon} size={15} color="#3E423C" />{it.label}
-            </button>
+            <PopItem key={it.label} icon={it.icon} label={it.label} onClick={() => { setOpen(false); it.onClick(); }} />
           ))}
-        </div>
+        </Pop>
       )}
-    </div>
+    </>
   );
 }
