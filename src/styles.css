@@ -1,0 +1,260 @@
+/* Значения — с листа «Спецификация для Claude Code» на холсте. */
+:root {
+  --bg-app: #EEF0EB;
+  --bg-panel: #FFFFFF;
+  --bg-quiet: #F7F8F5;
+  --chip: #F1F2EE;
+  --chip-hover: #E9EBE5;
+  --line: #ECEEE8;
+  --line-menu: #E3E5DF;
+  --track: #EEF0EA;
+  --text: #15171A;
+  --text-2: #3E423C;
+  --text-muted: #5F635C;
+  --icon-quiet: #8E9289;
+  --checkbox: #BFC3BA;
+  --dash: #DADCD5;
+  --accent: #C5F25A;
+  --accent-dark: #3D6A00;
+  --accent-bg: #F5FBE6;
+  --accent-bg-line: #DCEFB0;
+  --dark: #15171A;
+  --dark-btn: #24272A;
+  --dark-hover: #2E3130;
+  --on-dark: #B4B8B0;
+  --scrim: rgba(21, 23, 26, .32);
+
+  --font: Manrope, system-ui, -apple-system, sans-serif;
+  --font-display: Unbounded, Manrope, sans-serif;
+}
+
+* { box-sizing: border-box; }
+html, body, #root { margin: 0; min-height: 100%; }
+body {
+  background: var(--bg-app);
+  color: var(--text);
+  font-family: var(--font);
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+button, input, textarea, a { font-family: inherit; }
+button:focus-visible, a:focus-visible { outline: 2px solid var(--accent-dark); outline-offset: 2px; }
+
+/* ───────── Каркас Mac ───────── */
+.app {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  align-items: stretch;
+}
+.sidebar {
+  flex: 0 0 256px;
+  width: 256px;
+  padding: 20px 14px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  height: 100vh;
+  height: 100dvh;
+  position: sticky;
+  top: 0;
+  overflow-y: auto;
+}
+.panel {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 10px 10px 10px 0;
+  background: var(--bg-panel);
+  border-radius: 24px;
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 20px);
+  min-height: calc(100dvh - 20px);
+}
+.content {
+  flex: 1;
+  width: 100%;
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 44px 64px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.toolbar {
+  border-top: 1px solid var(--line);
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 56px;
+  flex-shrink: 0;
+}
+.tool {
+  width: 40px; height: 36px; border: 0; background: transparent; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0;
+}
+.tool:hover:not(:disabled) { background: var(--chip); }
+.tool:disabled { cursor: default; opacity: .45; }
+
+/* ───────── Левое меню ───────── */
+.logo { display: flex; align-items: center; gap: 10px; padding: 2px 8px 4px; }
+.logo-mark {
+  width: 28px; height: 28px; border-radius: 9px; background: var(--dark);
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.logo-mark > span { width: 10px; height: 10px; border-radius: 3px; background: var(--accent); }
+.logo-text { font-family: var(--font-display); font-size: 15px; font-weight: 700; letter-spacing: -0.02em; }
+
+.nav-group { display: flex; flex-direction: column; gap: 0; }
+.nav-areas { display: flex; flex-direction: column; gap: 12px; flex: 1; }
+.nav-item {
+  height: 28px; border: 0; background: transparent; border-radius: 8px; padding: 0 10px;
+  display: flex; align-items: center; gap: 10px; cursor: pointer; color: var(--text);
+  text-align: left; text-decoration: none; min-width: 0;
+}
+.nav-item:hover { background: rgba(21, 23, 26, .05); }
+.nav-item.active, .nav-item.active:hover { background: var(--accent); color: var(--text); }
+.nav-item .label { flex: 1; min-width: 0; font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nav-item .count { font-size: 12px; font-weight: 700; color: var(--text-muted); }
+.nav-item.active .count { color: var(--text); }
+.nav-item.future { color: var(--text-muted); cursor: default; }
+.nav-item.future:hover { background: transparent; }
+.nav-item.future .label { font-weight: 600; }
+.soon {
+  font-size: 10px; font-weight: 800; color: var(--text-muted); background: var(--line-menu);
+  border-radius: 999px; padding: 2px 7px; letter-spacing: 0.02em;
+}
+.nav-item.area .label { font-size: 13px; font-weight: 800; }
+.nav-item.project { height: 26px; color: var(--text-2); }
+.nav-item.project .label { font-size: 13px; font-weight: 600; }
+.nav-item.project.active .label { font-weight: 700; }
+.nav-empty { font-size: 13px; font-weight: 600; color: var(--text-muted); padding: 4px 10px; line-height: 1.5; }
+
+.sidebar-foot {
+  display: flex; align-items: center; gap: 6px; padding-top: 10px; border-top: 1px solid var(--line-menu);
+  position: relative;
+}
+.foot-btn {
+  height: 32px; border: 0; background: transparent; border-radius: 10px; padding: 0 10px;
+  display: flex; align-items: center; gap: 8px; cursor: pointer; color: var(--text-2);
+  font-size: 13px; font-weight: 700;
+}
+.foot-btn:hover { background: rgba(21, 23, 26, .05); }
+.foot-btn.grow { flex: 1; }
+.foot-btn.square { width: 32px; padding: 0; justify-content: center; }
+
+/* Белое меню (правый клик / «…» / настройки): радиус 14, ширина 240, пункт 30 */
+.popover {
+  position: absolute; z-index: 20; width: 240px; background: #FFFFFF; border-radius: 14px;
+  border: 1px solid var(--line); box-shadow: 0 10px 30px rgba(21, 23, 26, .10); padding: 6px;
+  display: flex; flex-direction: column;
+}
+.popover .meta { font-size: 12px; font-weight: 600; color: var(--text-muted); padding: 6px 10px 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.popover button {
+  height: 30px; border: 0; background: transparent; border-radius: 9px; padding: 0 10px;
+  display: flex; align-items: center; gap: 10px; cursor: pointer; color: var(--text);
+  font-size: 14px; font-weight: 600; text-align: left;
+}
+.popover button:hover:not(:disabled) { background: var(--bg-quiet); }
+.popover button:disabled { color: var(--text-muted); cursor: default; }
+
+/* ───────── Шапка экрана ───────── */
+.screen-head { display: flex; align-items: center; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
+.screen-title { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.title-badge {
+  width: 40px; height: 40px; border-radius: 13px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.title-badge.lime { background: var(--accent); }
+.title-badge.quiet { background: var(--chip); }
+h1.title {
+  margin: 0; font-family: var(--font-display); font-size: 28px; font-weight: 600;
+  letter-spacing: -0.03em; line-height: 34px; overflow-wrap: anywhere;
+}
+.events-slot {
+  border: 1.5px dashed var(--dash); border-radius: 16px; height: 40px; padding: 0 16px;
+  display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 600; color: var(--text-muted);
+}
+.empty {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 10px; padding: 120px 0; text-align: center;
+}
+.empty-badge {
+  width: 64px; height: 64px; border-radius: 22px; background: var(--accent-bg);
+  display: flex; align-items: center; justify-content: center;
+}
+.empty-title { font-size: 17px; font-weight: 800; margin-top: 6px; }
+.empty-hint { font-size: 14px; font-weight: 600; color: var(--text-muted); max-width: 380px; line-height: 1.5; }
+
+/* ───────── Вход ───────── */
+.login-page { min-height: 100vh; min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+.login-card {
+  width: 400px; max-width: 100%; background: #FFFFFF; border-radius: 28px; padding: 44px 40px 36px;
+  display: flex; flex-direction: column; align-items: center; gap: 28px; text-align: center;
+}
+.login-brand { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+.login-mark { width: 56px; height: 56px; border-radius: 18px; background: var(--dark); display: flex; align-items: center; justify-content: center; }
+.login-mark > span { width: 20px; height: 20px; border-radius: 6px; background: var(--accent); }
+.login-card h1 { margin: 0; font-family: var(--font-display); font-size: 30px; font-weight: 700; letter-spacing: -0.03em; }
+.login-card p { margin: 0; font-size: 14px; font-weight: 600; color: var(--text-muted); line-height: 1.5; }
+.btn-dark {
+  width: 100%; height: 48px; border: 0; border-radius: 14px; background: var(--dark); color: #FFFFFF;
+  font-size: 15px; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px;
+}
+.btn-dark:disabled { opacity: .6; cursor: default; }
+.login-error { font-size: 13px; font-weight: 600; color: var(--text-2); background: var(--chip); border-radius: 12px; padding: 10px 12px; }
+
+/* Тихое сообщение */
+.toast {
+  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 50;
+  background: var(--dark); color: #FFFFFF; font-size: 13px; font-weight: 700;
+  border-radius: 12px; padding: 10px 14px; box-shadow: 0 18px 40px rgba(21, 23, 26, .28);
+}
+
+/* ───────── iPhone ───────── */
+.phone { min-height: 100vh; min-height: 100dvh; padding-bottom: env(safe-area-inset-bottom); }
+.phone.menu-bg { background: var(--bg-app); }
+.phone.list-bg { background: #FFFFFF; }
+.phone-menu {
+  padding: calc(env(safe-area-inset-top) + 20px) 16px 120px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.phone-logo { display: flex; align-items: center; gap: 10px; padding: 0 4px 6px; }
+.phone-logo .logo-mark { width: 30px; height: 30px; border-radius: 10px; }
+.phone-logo .logo-mark > span { width: 11px; height: 11px; }
+.phone-logo .logo-text { flex: 1; font-size: 17px; }
+.phone-card { background: #FFFFFF; border-radius: 20px; padding: 2px 0; }
+.phone-row {
+  min-height: 44px; padding: 0 16px; display: flex; align-items: center; gap: 14px;
+  text-decoration: none; color: var(--text); border: 0; background: transparent; width: 100%; text-align: left;
+}
+.phone-row .label { flex: 1; min-width: 0; font-size: 17px; font-weight: 700; }
+.phone-row .count { font-size: 15px; font-weight: 700; color: var(--text-muted); }
+.phone-row.future { color: var(--text-muted); }
+.phone-row.future .label { font-weight: 600; }
+.phone-row.future .soon { font-size: 11px; padding: 3px 8px; }
+.phone-row.area .label { font-weight: 800; }
+.phone-row.project { color: var(--text-2); }
+.phone-row.project .label { font-size: 16px; font-weight: 600; line-height: 21px; padding: 11px 0; }
+.icon-btn44 {
+  width: 44px; height: 44px; border: 0; background: transparent; display: flex; align-items: center;
+  justify-content: center; padding: 0; cursor: pointer; flex-shrink: 0;
+}
+.phone-list { padding: calc(env(safe-area-inset-top) + 16px) 16px 120px; display: flex; flex-direction: column; gap: 14px; }
+.phone-back {
+  align-self: flex-start; height: 44px; margin-left: -8px; padding: 0 8px; display: flex; align-items: center;
+  gap: 4px; text-decoration: none; color: var(--text-2); font-size: 16px; font-weight: 700;
+}
+.phone-title { display: flex; align-items: flex-start; gap: 10px; }
+.phone-title .title-badge { width: 34px; height: 34px; border-radius: 11px; }
+.phone-title h1.title { font-size: 25px; flex: 1; min-width: 0; }
+.phone .events-slot { height: 38px; }
+.phone .empty { padding: 80px 0; }
+.fab {
+  position: fixed; right: 20px; bottom: calc(34px + env(safe-area-inset-bottom) * .5); z-index: 10;
+  width: 60px; height: 60px; border-radius: 50%; border: 0; background: var(--accent);
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+  box-shadow: 0 10px 24px rgba(21, 23, 26, .18);
+}
+.fab:disabled { cursor: default; }
