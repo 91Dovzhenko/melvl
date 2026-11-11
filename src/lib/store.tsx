@@ -13,8 +13,17 @@ type Store = Data & {
   insert<T extends TableName>(table: T, row: Partial<Tables[T]>): Tables[T];
   patch<T extends TableName>(table: T, id: string, changes: Partial<Tables[T]>): void;
   remove(table: TableName, id: string): void;
-  toast: (msg: string) => void;
+  /** Действие, которое можно отменить («Отменить» в плашке или ⌘Z). */
+  withUndo(message: string, fn: () => void): void;
+  /** Отменить последнее такое действие. false — отменять нечего. */
+  undo(): boolean;
+  toast: (msg: string, action?: ToastAction) => void;
 };
+
+type ToastAction = { label: string; run: () => void };
+type UndoStep =
+  | { kind: 'remove'; table: TableName; row: { id: string } }
+  | { kind: 'patch'; table: TableName; id: string; prev: Record<string, unknown> };
 
 const Ctx = createContext<Store | null>(null);
 
@@ -53,15 +62,18 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
   const [data, setData] = useState<Data>({
     areas: [], projects: [], tasks: [], skills: [], settings: DEFAULT_SETTINGS, loading: !offline, ...seed,
   });
-  const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [toastMsg, setToastMsg] = useState<{ msg: string; action?: ToastAction } | null>(null);
+  const recorder = useRef<UndoStep[] | null>(null);
+  const undoStack = useRef<{ message: string; steps: UndoStep[] }[]>([]);
   const toastTimer = useRef<number | undefined>(undefined);
   const dataRef = useRef(data);
   dataRef.current = data;
 
-  const toast = useCallback((msg: string) => {
-    setToastMsg(msg);
+  const toast = useCallback((msg: string, action?: ToastAction) => {
+    setToastMsg({ msg, action });
     window.clearTimeout(toastTimer.current);
-    toastTimer.current = window.setTimeout(() => setToastMsg(null), 3500);
+    // С кнопкой «Отменить» плашка держится 6 секунд (п. 6.8), иначе 3,5.
+    toastTimer.current = window.setTimeout(() => setToastMsg(null), action ? 6000 : 3500);
   }, []);
 
   const load = useCallback(async () => {
@@ -119,6 +131,11 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
   const patch = useCallback(<T extends TableName>(table: T, id: string, changes: Partial<Tables[T]>) => {
     const prev = (dataRef.current[table] as Tables[T][]).find((r) => r.id === id);
     if (!prev) return;
+    if (recorder.current) {
+      const before: Record<string, unknown> = {};
+      for (const k of Object.keys(changes)) before[k] = (prev as Record<string, unknown>)[k];
+      recorder.current.push({ kind: 'patch', table, id, prev: before });
+    }
     setTable(table, (rows) => rows.map((r) => (r.id === id ? { ...r, ...changes } : r)));
     if (supabase && !offline) {
       supabase.from(table).update(changes as Record<string, unknown>).eq('id', id).then(({ error }) => {
@@ -135,6 +152,7 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
   const remove = useCallback((table: TableName, id: string) => {
     const prev = (dataRef.current[table] as { id: string }[]).find((r) => r.id === id);
     if (!prev) return;
+    recorder.current?.push({ kind: 'remove', table, row: prev });
     setTable(table, (rows) => rows.filter((r) => r.id !== id));
     if (supabase && !offline) {
       supabase.from(table).update({ deleted_at: now() }).eq('id', id).then(({ error }) => {
@@ -147,12 +165,54 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
     }
   }, [offline, setTable, toast]);
 
-  const value = useMemo(() => ({ ...data, insert, patch, remove, toast }), [data, insert, patch, remove, toast]);
+  /** Вернуть удалённые строки (deleted_at = null) и прежние значения полей — в обратном порядке. */
+  const undo = useCallback(() => {
+    const entry = undoStack.current.pop();
+    if (!entry) return false;
+    for (const step of [...entry.steps].reverse()) {
+      if (step.kind === 'remove') {
+        const row = { ...step.row, deleted_at: null };
+        setTable(step.table, (rows) => (rows.some((r) => r.id === row.id) ? rows : [...rows, row as never]));
+        if (supabase && !offline) {
+          supabase.from(step.table).update({ deleted_at: null }).eq('id', row.id).then(({ error }) => {
+            if (error) { console.error(error); toast('Не удалось вернуть — проверьте связь'); }
+          });
+        }
+      } else {
+        patch(step.table, step.id, step.prev as never);
+      }
+    }
+    setToastMsg(null);
+    return true;
+  }, [offline, patch, setTable, toast]);
+
+  const withUndo = useCallback((message: string, fn: () => void) => {
+    recorder.current = [];
+    try { fn(); } finally {
+      const steps = recorder.current;
+      recorder.current = null;
+      if (steps.length) {
+        undoStack.current.push({ message, steps });
+        if (undoStack.current.length > 20) undoStack.current.shift();
+        toast(message, { label: 'Отменить', run: () => { undo(); } });
+      }
+    }
+  }, [toast, undo]);
+
+  const value = useMemo(() => ({ ...data, insert, patch, remove, withUndo, undo, toast }),
+    [data, insert, patch, remove, withUndo, undo, toast]);
 
   return (
     <Ctx.Provider value={value}>
       {children}
-      {toastMsg && <div className="toast" role="status">{toastMsg}</div>}
+      {toastMsg && (
+        <div className="toast" role="status">
+          <span>{toastMsg.msg}</span>
+          {toastMsg.action && (
+            <button type="button" className="toast-action" onClick={toastMsg.action.run}>{toastMsg.action.label}</button>
+          )}
+        </div>
+      )}
     </Ctx.Provider>
   );
 }

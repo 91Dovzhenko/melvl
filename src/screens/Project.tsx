@@ -45,9 +45,10 @@ export function ProjectScreen() {
             { label: 'Переименовать', icon: 'pencil', onClick: () => setRenameSignal((n) => n + 1) },
             {
               label: 'Удалить проект', icon: 'trash', onClick: () => {
-                if (!window.confirm(`Удалить проект «${p.name || 'Новый проект'}» вместе с задачами?`)) return;
-                for (const t of all) store.remove('tasks', t.id);
-                store.remove('projects', p.id);
+                store.withUndo('Проект удалён', () => {
+                  for (const t of all) store.remove('tasks', t.id);
+                  store.remove('projects', p.id);
+                });
                 nav('/today');
               },
             },

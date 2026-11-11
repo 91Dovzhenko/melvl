@@ -42,10 +42,12 @@ export function AreaScreen() {
             { label: 'Переименовать', icon: 'pencil', onClick: () => setRenameSignal((n) => n + 1) },
             {
               label: 'Удалить область', icon: 'trash', onClick: () => {
-                if (!window.confirm(`Удалить область «${a.name || 'Новая область'}»? Проекты останутся, но без области.`)) return;
-                for (const p of store.projects.filter((x) => x.area_id === a.id)) store.patch('projects', p.id, { area_id: null });
-                for (const t of store.tasks.filter((x) => x.area_id === a.id)) store.patch('tasks', t.id, { area_id: null });
-                store.remove('areas', a.id);
+                // Проекты и задачи области остаются, но без области.
+                store.withUndo('Область удалена', () => {
+                  for (const p of store.projects.filter((x) => x.area_id === a.id)) store.patch('projects', p.id, { area_id: null });
+                  for (const t of store.tasks.filter((x) => x.area_id === a.id)) store.patch('tasks', t.id, { area_id: null });
+                  store.remove('areas', a.id);
+                });
                 nav('/today');
               },
             },

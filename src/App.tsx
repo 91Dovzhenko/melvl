@@ -60,6 +60,11 @@ function useShortcuts() {
         ed.requestNew();
         return;
       }
+      // ⌘Z — вернуть удалённое. В полях ввода ⌘Z остаётся обычной отменой набора.
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.code === 'KeyZ' && !isField(e.target)) {
+        if (store.undo()) e.preventDefault();
+        return;
+      }
       if (isField(e.target) || ed.editingId || ed.draft) return;
       const plain = !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
       if (plain && (e.code === 'KeyN' || e.code === 'Space')) {
@@ -72,9 +77,9 @@ function useShortcuts() {
       if (e.key === 'Escape') ed.select(null);
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
-        store.remove('tasks', ed.selectedId);
+        const id = ed.selectedId;
+        store.withUndo('Задача удалена', () => store.remove('tasks', id));
         ed.select(null);
-        store.toast('Задача удалена');
       }
     };
     window.addEventListener('keydown', on);
