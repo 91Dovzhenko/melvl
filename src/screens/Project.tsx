@@ -6,12 +6,14 @@ import { TaskList } from '../tasks/TaskList';
 import { useNewTaskContext } from '../tasks/editing';
 import { Icon, Ring } from '../ui/icons';
 import { useIsPhone } from '../ui/useIsPhone';
-import { EditableNotes, EditableTitle, MoreMenu } from './parts';
+import { CompleteProjectDialog, EditableNotes, EditableTitle, MoreMenu } from './parts';
+import { completeFields } from '../lib/logbook';
 import { EstimatePicker, SkillPicker } from '../tasks/pickers';
 import { addDays, fmtMin } from '../lib/dates';
 import { planSums } from '../lib/views';
 import { PlanSumBlock } from '../ui/Sums';
 import { useToday } from '../lib/store';
+import { goTo } from '../lib/navBridge';
 
 export function ProjectScreen() {
   const { id = '' } = useParams();
@@ -23,6 +25,7 @@ export function ProjectScreen() {
   const [renameSignal, setRenameSignal] = useState(0);
   const [showLogged, setShowLogged] = useState(false);
   const [pop, setPop] = useState<{ kind: 'skill' | 'quest'; anchor: HTMLElement } | null>(null);
+  const [ask, setAsk] = useState(false);
   const p = store.projects.find((x) => x.id === id);
   const all = projectTasks(store, id);
   const visible = all.filter((t) => !t.logged_at);
@@ -36,6 +39,22 @@ export function ProjectScreen() {
   }
 
   const skill = store.skills.find((s) => s.id === p.default_skill_id);
+  const done = p.status === 'completed';
+  const openTasks = all.filter((t) => t.status === 'open');
+  // Завершение: клик по кольцу. Остались невыполненные — окно с выбором. Проект сам не закрывается.
+  const finish = (how: 'completed' | 'canceled') => {
+    setAsk(false);
+    const mode = store.settings.log_mode;
+    store.withUndo('Проект завершён', () => {
+      for (const t of openTasks) {
+        store.patch('tasks', t.id, how === 'completed' ? completeFields(mode) : { status: 'canceled', completed_at: new Date().toISOString() });
+      }
+      store.patch('projects', p.id, completeFields(mode));
+    });
+  };
+  const pid = p.id;
+  const reopen = () => store.patch('projects', pid, { status: 'open', completed_at: null, logged_at: null });
+  const onRing = () => (done ? reopen() : openTasks.length ? setAsk(true) : finish('completed'));
   // Квест: сделано — сумма оценок выполненных задач проекта; план — оценка квеста.
   const questDone = all.filter((t) => t.status === 'completed').reduce((m, t) => m + (t.estimate_min ?? 0), 0);
   const isNew = (loc.state as { rename?: boolean } | null)?.rename;
@@ -43,8 +62,8 @@ export function ProjectScreen() {
   return (
     <>
       <header style={{ display: 'flex', alignItems: 'flex-start', columnGap: 12, rowGap: 14, flexWrap: 'wrap' }}>
-        <button type="button" aria-label="Завершить проект — следующий пункт сборки" title="Завершить проект"
-          disabled style={{ width: 32, height: 32, marginTop: 1, border: 0, background: 'transparent', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <button type="button" aria-label={done ? 'Вернуть проект в работу' : 'Завершить проект'}
+          title={done ? 'Вернуть проект в работу' : 'Завершить проект'} onClick={onRing} style={{ cursor: 'pointer', width: 32, height: 32, marginTop: 1, border: 0, background: 'transparent', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           <Ring size={28} progress={projectProgress(store, p.id)} done={p.status === 'completed'} />
         </button>
         <div style={{ flex: phone ? '1 1 0' : '1 1 320px', minWidth: 0, display: 'flex', alignItems: 'flex-start', gap: 6 }}>
@@ -52,19 +71,26 @@ export function ProjectScreen() {
             onSave={(name) => store.patch('projects', p.id, { name })} />
           <MoreMenu label="Действия с проектом" items={[
             { label: 'Переименовать', icon: 'pencil', onClick: () => setRenameSignal((n) => n + 1) },
+            done
+              ? { label: 'Вернуть в работу', icon: 'repeat' as const, onClick: reopen }
+              : { label: 'Завершить проект', icon: 'check' as const, onClick: onRing },
             ...(p.is_quest ? [{ label: 'Не квест', icon: 'quest' as const, onClick: () => store.patch('projects', p.id, { is_quest: false }) }] : []),
             {
               label: 'Удалить проект', icon: 'trash', onClick: () => {
+                const pid = p.id;
                 store.withUndo('Проект удалён', () => {
                   for (const t of all) store.remove('tasks', t.id);
-                  store.remove('projects', p.id);
-                });
+                  store.remove('projects', pid);
+                }, () => goTo(`/project/${pid}`));
                 nav('/today');
               },
             },
           ]} />
         </div>
-        <PlanSumBlock {...planSums(all, today, addDays(today, 1))} />
+        {/* На узкой ширине блок часов уходит под заголовок отдельной строкой (спецификация, «Длинные названия»). */}
+        <div style={phone ? { flexBasis: '100%' } : { flexShrink: 0 }}>
+          <PlanSumBlock {...planSums(all, today, addDays(today, 1))} />
+        </div>
       </header>
 
       <div className="props">
@@ -103,12 +129,17 @@ export function ProjectScreen() {
           onPick={(v) => store.patch('projects', p.id, { quest_estimate_min: v })} />
       )}
 
+      {ask && (
+        <CompleteProjectDialog name={p.name} openCount={openTasks.length} progress={projectProgress(store, p.id)}
+          onDone={() => finish('completed')} onCancelTasks={() => finish('canceled')} onClose={() => setAsk(false)} />
+      )}
+
       <EditableNotes value={p.notes} onSave={(notes) => store.patch('projects', p.id, { notes })} />
 
       <div style={{ paddingTop: 18, display: 'flex', flexDirection: 'column' }}>
-        <TaskList tasks={showLogged ? [...visible, ...logged] : visible} mode={{ dueChips: true }} draftHere />
+        <TaskList tasks={showLogged || p.logged_at ? [...visible, ...logged] : visible} mode={{ dueChips: true }} draftHere />
         {visible.length === 0 && !showLogged && <EmptyProjectHint phone={phone} />}
-        {logged.length > 0 && (
+        {logged.length > 0 && !p.logged_at && (
           <button type="button" className="link-btn" onClick={() => setShowLogged((v) => !v)}>
             {showLogged ? 'Скрыть выполненные' : `Показать выполненные · ${logged.length}`}
           </button>

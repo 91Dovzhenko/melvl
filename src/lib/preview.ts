@@ -24,7 +24,7 @@ export const PREVIEW_SEED: Partial<Data> = {
   ],
   tasks: [
     task({ project_id: 'p1', title: 'Собрать тексты для первого экрана', when_date: t, estimate_min: 45 }),
-    task({ project_id: 'p1', title: 'Согласовать цвета с дизайнером', when_date: t, estimate_min: 30, status: 'completed', completed_at: '' }),
+    task({ project_id: 'p1', title: 'Согласовать цвета с дизайнером', when_date: t, estimate_min: 30, status: 'completed', completed_at: new Date().toISOString() }),
     task({ project_id: 'p1', title: 'Подготовить форму заявки', when_date: addDays(t, 2), estimate_min: 60, notes: 'Поля: имя, почта' }),
     task({ project_id: 'p1', title: 'Сделать короткую версию для соцсетей', someday: true, estimate_min: 60 }),
     task({ project_id: 'p1', title: 'Разобрать отзывы', when_date: addDays(t, 12) }),
@@ -32,6 +32,8 @@ export const PREVIEW_SEED: Partial<Data> = {
     task({ project_id: 'p3', title: 'Нарисовать три скетча', when_date: t, when_evening: true, estimate_min: 60 }),
     task({ title: 'Позвонить в сервис', when_date: t, estimate_min: 15 }),
     task({ title: 'Идея: заметки голосом' }),
+    task({ title: 'Купить подарок к выходным', when_date: addDays(t, 1), estimate_min: 30 }),
+    task({ project_id: 'p3', title: 'Купить скетчбук', when_date: addDays(t, 1), estimate_min: 15 }),
   ],
   skills: ([
     ['Упаковка', 'creator', 'frame'], ['Сценарий', 'creator', 'pencil'], ['Речь на камеру', 'creator', 'mic'],

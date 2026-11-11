@@ -14,7 +14,7 @@ type Store = Data & {
   patch<T extends TableName>(table: T, id: string, changes: Partial<Tables[T]>): void;
   remove(table: TableName, id: string): void;
   /** Действие, которое можно отменить («Отменить» в плашке или ⌘Z). */
-  withUndo(message: string, fn: () => void): void;
+  withUndo(message: string, fn: () => void, onUndo?: () => void): void;
   /** Отменить последнее такое действие. false — отменять нечего. */
   undo(): boolean;
   toast: (msg: string, action?: ToastAction) => void;
@@ -65,7 +65,7 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
   });
   const [toastMsg, setToastMsg] = useState<{ msg: string; action?: ToastAction } | null>(null);
   const recorder = useRef<UndoStep[] | null>(null);
-  const undoStack = useRef<{ message: string; steps: UndoStep[] }[]>([]);
+  const undoStack = useRef<{ message: string; steps: UndoStep[]; onUndo?: () => void }[]>([]);
   const toastTimer = useRef<number | undefined>(undefined);
   const dataRef = useRef(data);
   dataRef.current = data;
@@ -187,16 +187,18 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
       }
     }
     setToastMsg(null);
+    // Например, вернуть на страницу восстановленного проекта — чтобы было видно, что отмена сработала.
+    entry.onUndo?.();
     return true;
   }, [offline, patch, remove, setTable, toast]);
 
-  const withUndo = useCallback((message: string, fn: () => void) => {
+  const withUndo = useCallback((message: string, fn: () => void, onUndo?: () => void) => {
     recorder.current = [];
     try { fn(); } finally {
       const steps = recorder.current;
       recorder.current = null;
       if (steps.length) {
-        undoStack.current.push({ message, steps });
+        undoStack.current.push({ message, steps, onUndo });
         if (undoStack.current.length > 20) undoStack.current.shift();
         toast(message, { label: 'Отменить', run: () => { undo(); } });
       }

@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { BrowserRouter, Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useSession } from './lib/session';
+import { NavBridge } from './lib/navBridge';
+import { useAutoLog, useLogbook } from './lib/logbook';
 import { StoreProvider, useStore } from './lib/store';
 import { PREVIEW_SEED } from './lib/preview';
 import { Login } from './screens/Login';
@@ -8,7 +10,8 @@ import { Inbox } from './screens/Inbox';
 import { Today } from './screens/Today';
 import { ProjectScreen } from './screens/Project';
 import { AreaScreen } from './screens/Area';
-import { Placeholder } from './screens/Section';
+import { Plans } from './screens/Plans';
+import { Log } from './screens/Log';
 import { Popover, Sidebar, useCreateList } from './shell/Sidebar';
 import { PhoneMenu } from './shell/PhoneMenu';
 import { EditingProvider, useEditing } from './tasks/editing';
@@ -23,6 +26,7 @@ const PREVIEW = import.meta.env.DEV && new URLSearchParams(window.location.searc
 export default function App() {
   return (
     <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '')}>
+      <NavBridge />
       {PREVIEW ? (
         <StoreProvider offline seed={PREVIEW_SEED}>
           <EditingProvider><Shell email="demo@example.com" /></EditingProvider>
@@ -54,11 +58,18 @@ const isField = (el: EventTarget | null) =>
 function useShortcuts() {
   const ed = useEditing();
   const store = useStore();
+  const { logNow } = useLogbook();
   useEffect(() => {
     const on = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.code === 'KeyN') {
         e.preventDefault();
         ed.requestNew();
+        return;
+      }
+      // Shift+⌘Y — выполненное в Журнал.
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.code === 'KeyY') {
+        e.preventDefault();
+        logNow();
         return;
       }
       // ⌘Z — вернуть удалённое. В полях ввода ⌘Z остаётся обычной отменой набора.
@@ -85,17 +96,29 @@ function useShortcuts() {
     };
     window.addEventListener('keydown', on);
     return () => window.removeEventListener('keydown', on);
-  }, [ed, store]);
+  }, [ed, store, logNow]);
 }
 
 const ROUTES = [
   <Route key="inbox" path="/inbox" element={<Inbox />} />,
   <Route key="today" path="/today" element={<Today />} />,
-  <Route key="plans" path="/plans" element={<Placeholder kind="plans" />} />,
-  <Route key="log" path="/log" element={<Placeholder kind="log" />} />,
+  <Route key="plans" path="/plans" element={<Plans />} />,
+  <Route key="log" path="/log" element={<Log />} />,
   <Route key="project" path="/project/:id" element={<ProjectScreen />} />,
   <Route key="area" path="/area/:id" element={<AreaScreen />} />,
 ];
+
+/** Фокус в поле ввода — на iPhone это значит, что открыта клавиатура. */
+function useFieldFocused() {
+  const [on, setOn] = useState(() => isField(document.activeElement));
+  useEffect(() => {
+    const update = () => setTimeout(() => setOn(isField(document.activeElement)), 0);
+    document.addEventListener('focusin', update);
+    document.addEventListener('focusout', update);
+    return () => { document.removeEventListener('focusin', update); document.removeEventListener('focusout', update); };
+  }, []);
+  return on;
+}
 
 /** Задача, раскрытая сейчас в карточке (не новая). */
 function useOpenTask() {
@@ -113,6 +136,7 @@ function Shell({ email }: { email: string }) {
   const selectedTask = ed.selectedId ? store.tasks.find((t) => t.id === ed.selectedId) ?? null : null;
   const [barPop, setBarPop] = useState<{ kind: 'when' | 'move'; anchor: HTMLElement } | null>(null);
   useShortcuts();
+  useAutoLog();
 
   // Выделение и раскрытая карточка не переходят в другой раздел.
   useEffect(() => { ed.select(null); ed.close(); }, [loc.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -169,6 +193,7 @@ function PhoneList({ children }: { children: React.ReactNode }) {
   const loc = useLocation();
   const ed = useEditing();
   const openTask = useOpenTask();
+  const typing = useFieldFocused();
   return (
     <div className="phone list-bg" key={loc.pathname}>
       <div className="phone-list">
@@ -177,7 +202,8 @@ function PhoneList({ children }: { children: React.ReactNode }) {
         </Link>
         {children}
       </div>
-      {openTask ? <TaskActionBar task={openTask} floating /> : !ed.draft && <PhoneFab />}
+      {/* Пока открыта клавиатура (фокус в поле), панель скрыта — она не должна лежать поверх карточки. */}
+      {openTask ? !typing && <TaskActionBar task={openTask} floating /> : !ed.draft && <PhoneFab />}
     </div>
   );
 }

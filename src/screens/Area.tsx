@@ -1,11 +1,14 @@
 import { useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { useStore } from '../lib/store';
-import { projectProgress } from '../lib/views';
+import { useStore, useToday } from '../lib/store';
+import { planSums, projectProgress } from '../lib/views';
+import { addDays, fmtMin } from '../lib/dates';
+import { PlanSumBlock } from '../ui/Sums';
 import { useNewTaskContext } from '../tasks/editing';
 import { Icon, Ring } from '../ui/icons';
 import { EditableTitle, MoreMenu } from './parts';
 import { useIsPhone } from '../ui/useIsPhone';
+import { goTo } from '../lib/navBridge';
 
 export function AreaScreen() {
   const { id = '' } = useParams();
@@ -28,6 +31,12 @@ export function AreaScreen() {
     },
   });
 
+  const today = useToday();
+  const tomorrow = addDays(today, 1);
+  // Часы области — по задачам её проектов и задачам, лежащим прямо в области.
+  const projectIds = new Set(projects.map((p) => p.id));
+  const sums = planSums(store.tasks.filter((t) => (t.project_id && projectIds.has(t.project_id)) || (!t.project_id && t.area_id === id)), today, tomorrow);
+
   if (!a) return (store.loading ? <div className="hint-center" /> : <Navigate to="/today" replace />);
   const isNew = (loc.state as { rename?: boolean } | null)?.rename;
 
@@ -43,24 +52,31 @@ export function AreaScreen() {
             {
               label: 'Удалить область', icon: 'trash', onClick: () => {
                 // Проекты и задачи области остаются, но без области.
+                const aid = a.id;
                 store.withUndo('Область удалена', () => {
                   for (const p of store.projects.filter((x) => x.area_id === a.id)) store.patch('projects', p.id, { area_id: null });
                   for (const t of store.tasks.filter((x) => x.area_id === a.id)) store.patch('tasks', t.id, { area_id: null });
                   store.remove('areas', a.id);
-                });
+                }, () => goTo(`/area/${aid}`));
                 nav('/today');
               },
             },
           ]} />
+        </div>
+        <div style={phone ? { flexBasis: '100%' } : { flexShrink: 0 }}>
+          <PlanSumBlock {...sums} />
         </div>
       </header>
 
       <section aria-label="Проекты области" style={{ display: 'flex', flexDirection: 'column', marginTop: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0 8px 7px', margin: '0 -8px 4px', borderBottom: '1px solid #ECEEE8', fontSize: 12, fontWeight: 700, color: '#5F635C' }}>
           <span style={{ flex: 1 }}>Проекты</span>
+          <span style={{ width: 64, textAlign: 'right' }}>сегодня</span>
+          <span style={{ width: 64, textAlign: 'right' }}>всего</span>
         </div>
         {projects.map((p) => {
           const open = store.tasks.filter((t) => t.project_id === p.id && t.status === 'open' && !t.deleted_at).length;
+          const s = planSums(store.tasks.filter((t) => t.project_id === p.id), today, tomorrow);
           return (
             <Link key={p.id} to={`/project/${p.id}`} className="prow">
               <Ring size={18} progress={projectProgress(store, p.id)} done={p.status === 'completed'} />
@@ -69,11 +85,26 @@ export function AreaScreen() {
                 <span className="count-chip" title="Открытых задач">{open}</span>
                 {p.notes.trim() && <Icon name="note" size={13} color="#8E9289" width={1.9} />}
               </span>
+              <span style={{ width: 64, textAlign: 'right', fontSize: 14, fontWeight: s.today ? 800 : 600, color: s.today ? '#15171A' : '#8E9289' }}>
+                {s.today ? fmtMin(s.today) : '—'}
+              </span>
+              <span style={{ width: 64, textAlign: 'right', fontSize: 14, fontWeight: 800 }}>{fmtMin(s.total)}</span>
             </Link>
           );
         })}
-        {projects.length === 0 && <p className="foot-note">В области пока нет проектов. «Новый список» → «Новый проект».</p>}
+        {projects.length === 0 && <p className="foot-note">В области пока нет проектов. «+» внизу — новый проект.</p>}
       </section>
+      <p className="foot-note" style={{ fontSize: 12 }}>
+        «Позже» — все задачи после завтра и без даты. «Когда-нибудь» и задачи без оценки в суммы не входят.
+        {sums.noEstimate > 0 && ` Без оценки: ${sums.noEstimate} ${plural(sums.noEstimate, 'задача', 'задачи', 'задач')}.`}
+      </p>
     </>
   );
+}
+
+function plural(n: number, one: string, few: string, many: string) {
+  const m10 = n % 10, m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return one;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+  return many;
 }

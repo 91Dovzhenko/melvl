@@ -8,6 +8,7 @@ import { MovePicker, TaskContextMenu, useTaskActions } from './actions';
 import type { Task } from '../lib/types';
 import { useEditing } from './editing';
 import { useIsPhone } from '../ui/useIsPhone';
+import { completeFields } from '../lib/logbook';
 
 export type RowMode = {
   /** Показывать проект под задачей. */
@@ -16,6 +17,8 @@ export type RowMode = {
   dueChips?: boolean;
   /** Навык виден всегда (Журнал), иначе — при наведении. */
   alwaysSkill?: boolean;
+  /** Журнал: колонка даты выполнения слева (12/800, ширина 58). */
+  logDate?: (t: Task) => string;
 };
 
 /** Список задач с выделением, раскрытием карточки и местом для новой задачи. */
@@ -33,16 +36,17 @@ export function TaskList({ tasks, mode = {}, draftHere = false }: { tasks: Task[
 }
 
 function Checkbox({ task, size }: { task: Task; size: 'mac' | 'phone' }) {
-  const { patch } = useStore();
+  const { patch, settings } = useStore();
   const done = task.status === 'completed';
   return (
     <button type="button" className={'cb' + (done ? ' done' : '') + (task.someday ? ' dashed' : '') + (size === 'phone' ? ' cb-phone' : '')}
       aria-label={(done ? 'Снять отметку: ' : 'Выполнить: ') + (task.title || 'задача')}
       onClick={(e) => {
         e.stopPropagation();
+        // Снять отметку — задача возвращается в работу (и из Журнала тоже).
         patch('tasks', task.id, done
-          ? { status: 'open', completed_at: null }
-          : { status: 'completed', completed_at: new Date().toISOString() });
+          ? { status: 'open', completed_at: null, logged_at: null }
+          : completeFields(settings.log_mode));
       }}>
       {done && (
         <svg width={size === 'phone' ? 13 : 10} height={size === 'phone' ? 13 : 10} viewBox="0 0 12 12" fill="none" aria-hidden="true">
@@ -91,7 +95,8 @@ export function TaskRow({ task, mode }: { task: Task; mode: RowMode }) {
       }}>
       {menuAt && <TaskContextMenu task={task} at={menuAt} onClose={() => setMenuAt(null)} />}
       <Checkbox task={task} size={phone ? 'phone' : 'mac'} />
-      <div className="row-body" style={{ opacity: done ? 0.42 : 1 }}>
+      {mode.logDate && <span className="log-date">{mode.logDate(task)}</span>}
+      <div className="row-body" style={{ opacity: done && !mode.logDate ? 0.42 : 1 }}>
         <div className="row-line">
           {chip}
           <span className="row-title">{task.title || <span className="muted">Без названия</span>}</span>
@@ -152,11 +157,17 @@ export function TaskCard({ task }: { task?: Task }) {
   }, [setCommit]);
 
   useEffect(() => {
+    // iPhone, существующая задача: без клавиатуры (как в Things) — видны свойства и панель действий;
+    // карточка прокручивается так, чтобы её низ был выше панели. Новая задача — сразу в название.
+    if (phone && task) {
+      ref.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      return;
+    }
     const el = titleRef.current;
     if (!el) return;
     el.focus();
     el.setSelectionRange(el.value.length, el.value.length);
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useLayoutEffect(() => { autosize(titleRef.current); autosize(notesRef.current); }, [title, notes]);
 
   // Esc / клик вне карточки — закрыть и сохранить.

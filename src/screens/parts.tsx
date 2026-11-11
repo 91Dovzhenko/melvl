@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Icon, type IconName } from '../ui/icons';
+import { createPortal } from 'react-dom';
+import { Icon, Ring, type IconName } from '../ui/icons';
 import { useIsPhone } from '../ui/useIsPhone';
 import { Pop, PopItem } from '../ui/Pop';
 
@@ -83,5 +84,36 @@ export function MoreMenu({ label, items }: { label: string; items: { label: stri
         </Pop>
       )}
     </>
+  );
+}
+
+/** Окно завершения проекта (экран «Завершение проекта»): радиус 24, ширина 440; на iPhone — у низа экрана. */
+export function CompleteProjectDialog({ name, openCount, progress, onDone, onCancelTasks, onClose }: {
+  name: string; openCount: number; progress: number;
+  onDone: () => void; onCancelTasks: () => void; onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [onClose]);
+  const n = openCount;
+  const word = n % 10 === 1 && n % 100 !== 11 ? 'невыполненная задача' : [2, 3, 4].includes(n % 10) && ![12, 13, 14].includes(n % 100) ? 'невыполненные задачи' : 'невыполненных задач';
+  return createPortal(
+    <div className="modal-scrim" data-keep-card onClick={onClose}>
+      <div className="modal" role="dialog" aria-modal="true" aria-labelledby="done-title" onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <Ring size={28} progress={progress} />
+          <h2 id="done-title">Завершить проект?</h2>
+        </div>
+        <p>В проекте «{name || 'Новый проект'}» ещё {n} {word}. Что с ними сделать?</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
+          <button type="button" className="btn-lime" autoFocus onClick={onDone}>Отметить как выполненные</button>
+          <button type="button" className="btn-quiet" onClick={onCancelTasks}>Отметить как отменённые</button>
+          <button type="button" className="btn-text" onClick={onClose}>Отменить</button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
