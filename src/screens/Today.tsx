@@ -50,7 +50,7 @@ export function Today() {
         <div className="empty">
           <span className="empty-badge"><Icon name="today" size={30} color="#3D6A00" /></span>
           <span className="empty-title">На сегодня ничего нет</span>
-          <span className="empty-hint">Перенесите задачи из Входящих или проектов либо нажмите {phone ? '«+»' : '⌘N'}, чтобы создать новую</span>
+          <span className="empty-hint">Перенесите задачи из Входящих или проектов либо нажмите {phone ? '«+»' : 'N'}, чтобы создать новую</span>
         </div>
       ) : (
         <div className="groups">

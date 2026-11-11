@@ -45,7 +45,11 @@ function Gate() {
 const isField = (el: EventTarget | null) =>
   el instanceof HTMLElement && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
 
-/** Горячие клавиши: ⌘N — новая задача; Enter — раскрыть; Delete — удалить выделенную; Esc — снять выделение. */
+/**
+ * Горячие клавиши. Новая задача: ⌘N (в Chrome-вкладке браузер забирает его себе — открывает окно),
+ * поэтому запасные — N или Пробел вне полей ввода (раскладка не важна). Enter — раскрыть выделенную,
+ * Delete — удалить, Esc — снять выделение.
+ */
 function useShortcuts() {
   const ed = useEditing();
   const store = useStore();
@@ -57,6 +61,12 @@ function useShortcuts() {
         return;
       }
       if (isField(e.target) || ed.editingId || ed.draft) return;
+      const plain = !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
+      if (plain && (e.code === 'KeyN' || e.code === 'Space')) {
+        e.preventDefault();
+        ed.requestNew();
+        return;
+      }
       if (!ed.selectedId) return;
       if (e.key === 'Enter') { e.preventDefault(); ed.open(ed.selectedId); }
       if (e.key === 'Escape') ed.select(null);
@@ -113,7 +123,7 @@ function Shell({ email }: { email: string }) {
           </Routes>
         </div>
         <div className="toolbar">
-          <button type="button" className="tool" aria-label="Новая задача" title="Новая задача  ⌘N"
+          <button type="button" className="tool" aria-label="Новая задача" title="Новая задача — N или пробел"
             onClick={() => ed.requestNew()}>
             <Icon name="plus" size={18} color="#3E423C" width={2} />
           </button>

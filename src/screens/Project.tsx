@@ -91,7 +91,7 @@ function EmptyProjectHint({ phone }: { phone: boolean }) {
     <div className="hint-center" style={{ padding: '120px 0' }}>
       {phone
         ? <span>Нажмите «+», чтобы создать задачу</span>
-        : <span>Нажмите <span className="kbd">⌘N</span>, чтобы создать задачу</span>}
+        : <span>Нажмите <span className="kbd">N</span>, чтобы создать задачу</span>}
     </div>
   );
 }

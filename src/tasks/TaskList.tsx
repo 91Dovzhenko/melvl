@@ -180,7 +180,11 @@ export function TaskCard({ task }: { task?: Task }) {
         <textarea ref={titleRef} className="card-title" rows={1} value={title} placeholder="Новая задача"
           aria-label="Название задачи"
           onChange={(e) => setTitle(e.target.value.replace(/\n/g, ' '))}
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); notesRef.current?.focus(); } }} />
+          enterKeyHint="done"
+          // Enter в названии — завершить, как клик вне карточки. Заметки — кликом по «Заметки».
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); commitRef.current(); }
+          }} />
       </div>
       <textarea ref={notesRef} className="card-notes" rows={1} value={notes} placeholder="Заметки"
         aria-label="Заметки" onChange={(e) => setNotes(e.target.value)} />
