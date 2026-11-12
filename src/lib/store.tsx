@@ -129,12 +129,93 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
   const loadRef = useRef(load);
   loadRef.current = load;
 
-  // До Realtime (п. 7 сборки): подтягиваем свежие данные, когда приложение снова на экране.
+  // Realtime (п. 6.6): изменения с других устройств приходят сразу.
+  // Пока своя запись по строке не подтверждена сервером, события по ней не применяются —
+  // иначе эхо предыдущей правки на миг откатило бы более новую.
   useEffect(() => {
-    const on = () => { if (document.visibilityState === 'visible') void load(); };
+    const sb = supabase;
+    if (!sb || offline) return;
+    let channel: ReturnType<typeof sb.channel> | null = null;
+    let dropped = false;
+    let alive = true;
+    void sb.auth.getSession().then(({ data: s }) => {
+      const uid = s.session?.user.id;
+      if (!alive || !uid) return;
+      channel = sb.channel('melvl-' + uid);
+      for (const table of ['areas', 'projects', 'tasks', 'skills', 'repeat_rules', 'settings'] as const) {
+        channel.on('postgres_changes', { event: '*', schema: 'public', table, filter: `owner=eq.${uid}` },
+          (e) => applyRemote(table, e.eventType, e.new as Record<string, unknown>, e.old as Record<string, unknown>));
+      }
+      // На события DELETE фильтр по owner не действует — подписка на них отдельно, без фильтра (ключи — uuid, чужих строк в данных нет).
+      for (const table of ['repeat_rules'] as const) {
+        channel.on('postgres_changes', { event: 'DELETE', schema: 'public', table },
+          (e) => applyRemote(table, 'DELETE', {}, e.old as Record<string, unknown>));
+      }
+      channel.subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          // Переподключились после обрыва — подтянуть то, что пропустили.
+          if (dropped) void loadRef.current();
+          dropped = false;
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          dropped = true;
+        }
+      });
+    });
+    return () => { alive = false; if (channel) void sb.removeChannel(channel); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offline]);
+
+  // iPhone усыпляет соединение, когда приложение свёрнуто, — при возврате на экран подтягиваем пропущенное.
+  useEffect(() => {
+    let last = 0;
+    const on = () => {
+      if (document.visibilityState !== 'visible' || Date.now() - last < 5000) return;
+      last = Date.now();
+      void load();
+    };
     document.addEventListener('visibilitychange', on);
     return () => document.removeEventListener('visibilitychange', on);
   }, [load]);
+
+  /** Строки, по которым своя запись ещё в пути (id → сколько запросов). */
+  const pending = useRef(new Map<string, number>());
+  const track = useCallback(<R,>(id: string, p: PromiseLike<R>) => {
+    pending.current.set(id, (pending.current.get(id) ?? 0) + 1);
+    const done = () => {
+      const n = (pending.current.get(id) ?? 1) - 1;
+      if (n <= 0) pending.current.delete(id); else pending.current.set(id, n);
+    };
+    return Promise.resolve(p).then((r) => { done(); return r; }, (e) => { done(); throw e; });
+  }, []);
+
+  const applyRemote = (table: TableName | 'repeat_rules' | 'settings', type: string, row: Record<string, unknown>, old: Record<string, unknown>) => {
+    if (table === 'settings') {
+      if (type === 'DELETE' || pending.current.has('settings')) return;
+      const { log_mode, today_view, last_auto_log } = row as Settings;
+      setData((d) => ({ ...d, settings: { log_mode, today_view, last_auto_log } }));
+      return;
+    }
+    if (table === 'repeat_rules') {
+      const key = (row.task_id ?? old.task_id) as string | undefined;
+      if (!key) return;
+      setData((d) => {
+        const rest = d.rules.filter((r) => r.task_id !== key);
+        return { ...d, rules: type === 'DELETE' ? rest : [...rest, row as unknown as RepeatRule] };
+      });
+      return;
+    }
+    const id = (row.id ?? old.id) as string | undefined;
+    if (!id || pending.current.has(id)) return;
+    setData((d) => {
+      const rows = d[table] as { id: string }[];
+      const rest = rows.filter((r) => r.id !== id);
+      const gone = type === 'DELETE' || row.deleted_at;
+      if (gone) return rest.length === rows.length ? d : { ...d, [table]: rest };
+      const i = rows.findIndex((r) => r.id === id);
+      const next = i < 0 ? [...rows, row] : rows.map((r, j) => (j === i ? { ...r, ...row } : r));
+      return { ...d, [table]: next };
+    });
+  };
 
   const setTable = useCallback(<T extends TableName>(table: T, fn: (rows: Tables[T][]) => Tables[T][]) => {
     setData((d) => ({ ...d, [table]: fn(d[table] as Tables[T][]) }));
@@ -147,7 +228,7 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
     if (supabase && !offline) {
       const payload = { ...full } as Record<string, unknown>;
       delete payload.created_at;
-      supabase.from(table).insert(payload).then(({ error }) => {
+      track(full.id, supabase.from(table).insert(payload)).then(({ error }) => {
         if (error) {
           console.error(error);
           setTable(table, (rows) => rows.filter((r) => r.id !== full.id));
@@ -156,7 +237,7 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
       });
     }
     return full;
-  }, [offline, setTable, toast]);
+  }, [offline, setTable, toast, track]);
 
   const patch = useCallback(<T extends TableName>(table: T, id: string, changes: Partial<Tables[T]>) => {
     const prev = (dataRef.current[table] as Tables[T][]).find((r) => r.id === id);
@@ -171,7 +252,7 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
     const copyDone = table === 'tasks' && (changes as Partial<Task>).status === 'completed' && (prev as Task).repeat_template_id;
     if (copyDone && (!supabase || offline)) setData((d) => afterCompletionLocal(d, prev as Task));
     if (supabase && !offline) {
-      supabase.from(table).update(changes as Record<string, unknown>).eq('id', id).then(({ error }) => {
+      track(id, supabase.from(table).update(changes as Record<string, unknown>).eq('id', id)).then(({ error }) => {
         if (!error && copyDone) void loadRef.current();
         if (error) {
           console.error(error);
@@ -180,7 +261,7 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
         }
       });
     }
-  }, [offline, setTable, toast]);
+  }, [offline, setTable, toast, track]);
 
   /** Мягкое удаление: строка пропадает из интерфейса, в базе — пометка deleted_at. */
   const remove = useCallback((table: TableName, id: string) => {
@@ -189,7 +270,7 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
     recorder.current?.push({ kind: 'remove', table, row: prev });
     setTable(table, (rows) => rows.filter((r) => r.id !== id));
     if (supabase && !offline) {
-      supabase.from(table).update({ deleted_at: now() }).eq('id', id).then(({ error }) => {
+      track(id, supabase.from(table).update({ deleted_at: now() }).eq('id', id)).then(({ error }) => {
         if (error) {
           console.error(error);
           setTable(table, (rows) => [...rows, prev as never]);
@@ -197,7 +278,7 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
         }
       });
     }
-  }, [offline, setTable, toast]);
+  }, [offline, setTable, toast, track]);
 
   /** Вернуть удалённые строки (deleted_at = null) и прежние значения полей — в обратном порядке. */
   const undo = useCallback(() => {
@@ -210,7 +291,7 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
         const row = { ...step.row, deleted_at: null };
         setTable(step.table, (rows) => (rows.some((r) => r.id === row.id) ? rows : [...rows, row as never]));
         if (supabase && !offline) {
-          supabase.from(step.table).update({ deleted_at: null }).eq('id', row.id).then(({ error }) => {
+          track(row.id, supabase.from(step.table).update({ deleted_at: null }).eq('id', row.id)).then(({ error }) => {
             if (error) { console.error(error); toast('Не удалось вернуть — проверьте связь'); }
           });
         }
@@ -222,7 +303,7 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
     // Например, вернуть на страницу восстановленного проекта — чтобы было видно, что отмена сработала.
     entry.onUndo?.();
     return true;
-  }, [offline, patch, remove, setTable, toast]);
+  }, [offline, patch, remove, setTable, toast, track]);
 
   const withUndo = useCallback((message: string, fn: () => void, onUndo?: () => void) => {
     recorder.current = [];
@@ -241,7 +322,7 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
     const prev = dataRef.current.settings;
     setData((d) => ({ ...d, settings: { ...d.settings, ...changes } }));
     if (supabase && !offline) {
-      supabase.from('settings').update(changes).not('owner', 'is', null).then(({ error }) => {
+      track('settings', supabase.from('settings').update(changes).not('owner', 'is', null)).then(({ error }) => {
         if (error) {
           console.error(error);
           setData((d) => ({ ...d, settings: prev }));
@@ -249,7 +330,7 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
         }
       });
     }
-  }, [offline, toast]);
+  }, [offline, toast, track]);
 
   const setRepeat = useCallback(async (taskId: string, r: RepeatInput) => {
     if (!supabase || offline) {
