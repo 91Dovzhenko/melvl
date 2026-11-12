@@ -26,12 +26,15 @@ export type RowMode = {
 /** Список задач с выделением, раскрытием карточки и местом для новой задачи. */
 export function TaskList({ tasks, mode = {}, draftHere = false }: { tasks: Task[]; mode?: RowMode; draftHere?: boolean }) {
   const ed = useEditing();
+  const phoneLayout = useIsPhone();
+  // На iPhone новая задача — карточкой сверху экрана (PhoneNewTask), не в списке.
+  if (phoneLayout) draftHere = false;
   const draftAfter = ed.draft?.afterId ?? null;
   const items: React.ReactNode[] = [];
   if (ed.draft && draftHere && draftAfter === null && tasks.length === 0) items.push(<TaskCard key="draft" />);
   tasks.forEach((t, i) => {
     items.push(ed.editingId === t.id ? <TaskCard key={t.id} task={t} /> : <TaskRow key={t.id} task={t} mode={mode} />);
-    if (ed.draft && draftAfter === t.id) items.push(<TaskCard key="draft" />);
+    if (ed.draft && draftAfter === t.id && !phoneLayout) items.push(<TaskCard key="draft" />);
     if (ed.draft && draftHere && draftAfter === null && i === tasks.length - 1) items.push(<TaskCard key="draft" />);
   });
   return <div className="task-list">{items}</div>;
@@ -88,9 +91,14 @@ export function TaskRow({ task, mode }: { task: Task; mode: RowMode }) {
 
   let chip: React.ReactNode = null;
   if (mode.dueChips) {
+    // Шаблон повтора (раздел 7): есть открытая копия — «Ожидание»; нет — дата следующей копии в формате меток срока.
     const rule = task.is_template ? store.rules.find((r) => r.task_id === task.id) : undefined;
-    if (task.is_template) chip = <span className="due-chip" title={rule?.next_date ? `Следующая копия: ${shortDate(rule.next_date)}` : 'Ждёт выполнения копии'}>Ожидание</span>;
-    else if (task.someday) chip = <span className="due-chip">Когда-нибудь</span>;
+    const openCopy = task.is_template && store.tasks.some((c) => c.repeat_template_id === task.id && c.status === 'open' && !c.deleted_at && !c.logged_at);
+    if (task.is_template) {
+      chip = openCopy || !rule?.next_date
+        ? <span className="due-chip" title={rule?.next_date ? `Следующая копия: ${shortDate(rule.next_date)}` : 'Ждёт выполнения копии'}>Ожидание</span>
+        : <span className="due-chip" title={`Следующая копия: ${shortDate(rule.next_date)}`}>{dueChip(rule.next_date, today)}</span>;
+    } else if (task.someday) chip = <span className="due-chip">Когда-нибудь</span>;
     else if (task.when_date && task.when_date <= today) chip = <TodaySquare />;
     else if (task.when_date) chip = <span className="due-chip">{dueChip(task.when_date, today)}</span>;
   }
@@ -116,7 +124,10 @@ export function TaskRow({ task, mode }: { task: Task; mode: RowMode }) {
           <span className="row-title">{task.title || <span className="muted">Без названия</span>}</span>
           {task.notes.trim() && <span className="trail icon"><Icon name="note" size={13} color="#8E9289" width={1.9} /></span>}
           {(task.is_template || task.repeat_template_id) && (
-            <span className="trail icon" role="img" aria-label="Повторяется"><Icon name="repeat" size={13} color="#8E9289" width={1.9} /></span>
+            <span className="trail icon" role="img" aria-label={task.is_template ? 'Шаблон повтора' : 'Копия повтора'}>
+              {/* Шаблон — «акцент тёмный» (синего в палитре нет, решено 13 нояб.), копия — серая. */}
+              <Icon name="repeat" size={13} color={task.is_template ? '#3D6A00' : '#8E9289'} width={1.9} />
+            </span>
           )}
           {task.estimate_min !== null && <span className="trail"><span className="est">{fmtMin(task.estimate_min)}</span></span>}
           {skill && !phone && (

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { BrowserRouter, Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useSession } from './lib/session';
 import { NavBridge } from './lib/navBridge';
@@ -14,10 +14,11 @@ import { Plans } from './screens/Plans';
 import { Log } from './screens/Log';
 import { SettingsScreen } from './screens/Settings';
 import { AccountProvider } from './lib/account';
-import { Popover, Sidebar, useCreateList } from './shell/Sidebar';
+import { Sidebar, useCreateList } from './shell/Sidebar';
 import { PhoneMenu } from './shell/PhoneMenu';
 import { EditingProvider, useEditing } from './tasks/editing';
 import { TaskActionBar, TaskPropPicker } from './tasks/actions';
+import { PhoneNewTask } from './tasks/PhoneNewTask';
 import { Icon, Ring } from './ui/icons';
 import { useIsPhone } from './ui/useIsPhone';
 
@@ -164,7 +165,7 @@ function Shell() {
   if (phone) {
     return (
       <Routes>
-        <Route path="/" element={<div className="phone menu-bg"><PhoneMenu /><PhoneFab menu /></div>} />
+        <Route path="/" element={<div className="phone menu-bg"><PhoneMenu />{ed.draft ? <PhoneNewTask /> : <PhoneFab />}</div>} />
         <Route path="*" element={<PhoneList><Routes>{routes}<Route path="*" element={<Navigate to="/" replace />} /></Routes></PhoneList>} />
       </Routes>
     );
@@ -225,32 +226,51 @@ function PhoneList({ children }: { children: React.ReactNode }) {
       </div>
       {/* Панель видна, когда карточка открыта; прячется только пока на экране клавиатура. */}
       {!inSettings && (openTask ? !typing && <TaskActionBar task={openTask} floating /> : !ed.draft && <PhoneFab />)}
+      {ed.draft && <PhoneNewTask />}
     </div>
   );
 }
 
-/** «+» на iPhone: в разделе — новая задача; на экране меню — выбор «задача / проект / область». */
-function PhoneFab({ menu }: { menu?: boolean }) {
+/**
+ * «+» на iPhone (60, лайм, справа 20, снизу 34): нажатие — новая задача в текущем разделе (на экране меню — во Входящие);
+ * долгое нажатие — «Новая задача / Новый проект / Новая область».
+ */
+function PhoneFab() {
   const ed = useEditing();
   const create = useCreateList();
   const [open, setOpen] = useState(false);
+  const timer = useRef<number | undefined>(undefined);
+  const long = useRef(false);
+  const startPress = () => {
+    long.current = false;
+    timer.current = window.setTimeout(() => { long.current = true; setOpen(true); navigator.vibrate?.(10); }, 450);
+  };
+  const endPress = () => window.clearTimeout(timer.current);
   return (
-    <div style={{ position: 'fixed', right: 20, bottom: 'calc(34px + env(safe-area-inset-bottom) * .5)', zIndex: 10 }}>
-      {open && (
-        <Popover onClose={() => setOpen(false)} style={{ bottom: 70, right: 0 }}>
-          <button type="button" role="menuitem" onClick={() => { setOpen(false); create.project(); }}>
-            <Ring size={16} progress={0} />Новый проект
-          </button>
-          <button type="button" role="menuitem" onClick={() => { setOpen(false); create.area(); }}>
-            <Icon name="area" size={16} color="#5F635C" />Новая область
-          </button>
-        </Popover>
-      )}
-      <button type="button" className="fab" style={{ position: 'static' }}
-        aria-label={menu ? 'Новый проект или область' : 'Новая задача'}
-        onClick={() => (menu ? setOpen((v) => !v) : ed.requestNew())}>
-        <Icon name="plus" size={26} color="#15171A" width={2.2} />
-      </button>
-    </div>
+    <>
+      {open && <div className="fab-scrim" onClick={() => setOpen(false)} />}
+      <div style={{ position: 'fixed', right: 20, bottom: 'calc(34px + env(safe-area-inset-bottom) * .5)', zIndex: 31 }}>
+        {open && (
+          <div className="fab-menu" role="menu" aria-label="Создать">
+            <button type="button" role="menuitem" onClick={() => { setOpen(false); ed.requestNew(); }}>
+              <Icon name="plus" size={20} color="#3E423C" width={2} />Новая задача
+            </button>
+            <button type="button" role="menuitem" onClick={() => { setOpen(false); create.project(); }}>
+              <Ring size={22} progress={0} />Новый проект
+            </button>
+            <button type="button" role="menuitem" onClick={() => { setOpen(false); create.area(); }}>
+              <Icon name="area" size={20} color="#3E423C" />Новая область
+            </button>
+          </div>
+        )}
+        <button type="button" className="fab" style={{ position: 'static' }}
+          aria-label="Новая задача (долгое нажатие — новый проект или область)"
+          onPointerDown={startPress} onPointerUp={endPress} onPointerLeave={endPress} onPointerCancel={endPress}
+          onContextMenu={(e) => e.preventDefault()}
+          onClick={() => { if (long.current) { long.current = false; return; } ed.requestNew(); }}>
+          <Icon name="plus" size={26} color="#15171A" width={2.2} />
+        </button>
+      </div>
+    </>
   );
 }

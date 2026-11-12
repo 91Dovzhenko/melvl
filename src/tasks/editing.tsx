@@ -54,8 +54,8 @@ export function EditingProvider({ children }: { children: React.ReactNode }) {
   const commitOpen = useCallback(() => { commitRef.current?.(); }, []);
 
   const requestNew = useCallback(() => {
-    const ctx = ctxRef.current;
-    if (!ctx) return;
+    // Без раздела (экран меню на iPhone) — новая задача во Входящие.
+    const ctx = ctxRef.current ?? { defaults: {}, list: [] };
     if (ctx.onNew) { ctx.onNew(); return; }
     const sel = ctx.list.find((t) => t.id === selectedId);
     const fields: Partial<Task> = { ...ctx.defaults };
