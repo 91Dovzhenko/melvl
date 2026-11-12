@@ -75,7 +75,7 @@ export function AreaScreen() {
           <span style={{ width: 64, textAlign: 'right' }}>всего</span>
         </div>
         {projects.map((p) => {
-          const open = store.tasks.filter((t) => t.project_id === p.id && t.status === 'open' && !t.deleted_at).length;
+          const open = store.tasks.filter((t) => t.project_id === p.id && t.status === 'open' && !t.deleted_at && !t.is_template).length;
           const s = planSums(store.tasks.filter((t) => t.project_id === p.id), today, tomorrow);
           return (
             <Link key={p.id} to={`/project/${p.id}`} className="prow">

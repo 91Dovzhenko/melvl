@@ -4,7 +4,7 @@ import type { Data } from './store';
 const byOrder = (a: { sort_order: number }, b: { sort_order: number }) => a.sort_order - b.sort_order;
 
 /** Видна в списках: не удалена и не перенесена в Журнал; отменённые не показываем. */
-export const isListed = (t: Task) => !t.logged_at && !t.deleted_at && t.status !== 'canceled';
+export const isListed = (t: Task) => !t.logged_at && !t.deleted_at && t.status !== 'canceled' && !t.is_template;
 
 export const isInbox = (t: Task) => !t.project_id && !t.area_id && !t.when_date && !t.someday;
 export const isToday = (t: Task, today: string) => !t.someday && t.when_date !== null && t.when_date <= today;
@@ -57,7 +57,7 @@ export function projectTasks(d: Pick<Data, 'tasks'>, projectId: string) {
 
 /** Доля выполненных задач проекта от всех (без отменённых и удалённых). */
 export function projectProgress(d: Pick<Data, 'tasks'>, projectId: string) {
-  const own = d.tasks.filter((t) => t.project_id === projectId && !t.deleted_at && t.status !== 'canceled');
+  const own = d.tasks.filter((t) => t.project_id === projectId && !t.deleted_at && t.status !== 'canceled' && !t.is_template);
   if (!own.length) return 0;
   return own.filter((t) => t.status === 'completed').length / own.length;
 }

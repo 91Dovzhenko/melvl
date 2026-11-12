@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useStore } from '../lib/store';
 import { orderAfter, skillOf, sortedAreas } from '../lib/views';
 import { EstimatePicker, SkillPicker, WhenPicker } from './pickers';
+import { RepeatDialog } from './repeat';
 import type { Task } from '../lib/types';
 import { Icon, Ring } from '../ui/icons';
 import { Pop, PopItem, PopSep, type Anchor } from '../ui/Pop';
@@ -100,13 +101,13 @@ function ProjectItem({ name, selected, onClick }: { name: string; selected: bool
 }
 
 /** Меню «…» раскрытой задачи. */
-export function TaskMoreMenu({ task, anchor, onClose }: { task: Task; anchor: Anchor | null; onClose: () => void }) {
+export function TaskMoreMenu({ task, anchor, onClose, onRepeat }: { task: Task; anchor: Anchor | null; onClose: () => void; onRepeat: () => void }) {
   const act = useTaskActions();
   return (
     <Pop anchor={anchor} onClose={onClose} title="Действия с задачей" width={240}>
       <PopItem icon="duplicate" label="Дублировать" onClick={() => { onClose(); act.duplicate(task); }} />
       <PopItem icon="project" label="Сделать проектом" onClick={() => { onClose(); act.makeProject(task); }} />
-      <PopItem icon="repeat" label="Повторять" hint="скоро" disabled />
+      <PopItem icon="repeat" label="Повторять…" onClick={() => { onClose(); onRepeat(); }} />
     </Pop>
   );
 }
@@ -117,7 +118,7 @@ export function TaskMoreMenu({ task, anchor, onClose }: { task: Task; anchor: An
  */
 export function TaskActionBar({ task, floating }: { task: Task; floating?: boolean }) {
   const act = useTaskActions();
-  const [open, setOpen] = useState<'move' | 'more' | null>(null);
+  const [open, setOpen] = useState<'move' | 'more' | 'repeat' | null>(null);
   const moveRef = useRef<HTMLButtonElement>(null);
   const moreRef = useRef<HTMLButtonElement>(null);
   const color = floating ? '#FFFFFF' : '#3E423C';
@@ -136,15 +137,16 @@ export function TaskActionBar({ task, floating }: { task: Task; floating?: boole
         <Icon name="more" size={floating ? 22 : 18} color={color} width={3} />
       </button>
       {open === 'move' && <MovePicker task={task} anchor={moveRef.current} onClose={() => setOpen(null)} onPick={(to) => act.move(task, to)} />}
-      {open === 'more' && <TaskMoreMenu task={task} anchor={moreRef.current} onClose={() => setOpen(null)} />}
+      {open === 'more' && <TaskMoreMenu task={task} anchor={moreRef.current} onClose={() => setOpen(null)} onRepeat={() => setOpen('repeat')} />}
+      {open === 'repeat' && <RepeatDialog task={task} onClose={() => setOpen(null)} />}
     </div>
   );
 }
 
-type Sub = 'when' | 'move' | 'est' | 'skill' | null;
+type Sub = 'when' | 'move' | 'est' | 'skill' | 'repeat' | null;
 
 /** Окна свойств для задачи вне карточки (меню правого клика, нижняя панель Mac). */
-export function TaskPropPicker({ task, kind, anchor, onClose }: { task: Task; kind: Exclude<Sub, null>; anchor: Anchor; onClose: () => void }) {
+export function TaskPropPicker({ task, kind, anchor, onClose }: { task: Task; kind: Exclude<Sub, null | 'repeat'>; anchor: Anchor; onClose: () => void }) {
   const store = useStore();
   const act = useTaskActions();
   const patch = (c: Partial<Task>) => store.patch('tasks', task.id, c);
@@ -161,6 +163,7 @@ export function TaskPropPicker({ task, kind, anchor, onClose }: { task: Task; ki
 export function TaskContextMenu({ task, at, onClose }: { task: Task; at: { x: number; y: number }; onClose: () => void }) {
   const act = useTaskActions();
   const [sub, setSub] = useState<Sub>(null);
+  if (sub === 'repeat') return <RepeatDialog task={task} onClose={onClose} />;
   if (sub) return <TaskPropPicker task={task} kind={sub} anchor={at} onClose={onClose} />;
   const item = (icon: React.ComponentProps<typeof PopItem>['icon'], label: string, run: () => void, disabled?: boolean) => (
     <PopItem icon={icon} label={label} disabled={disabled} onClick={run} />
@@ -171,7 +174,7 @@ export function TaskContextMenu({ task, at, onClose }: { task: Task; at: { x: nu
       {item('move', 'Переместить…', () => setSub('move'))}
       {item('estimate', 'Оценка…', () => setSub('est'))}
       {item('skill', 'Навык…', () => setSub('skill'))}
-      {item('repeat', 'Повторять…', () => {}, true)}
+      {item('repeat', 'Повторять…', () => setSub('repeat'))}
       <PopSep />
       {item('duplicate', 'Дублировать', () => { onClose(); act.duplicate(task); })}
       {item('project', 'Сделать проектом…', () => { onClose(); act.makeProject(task); })}

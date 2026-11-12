@@ -40,11 +40,16 @@ export function ProjectScreen() {
 
   const skill = store.skills.find((s) => s.id === p.default_skill_id);
   const done = p.status === 'completed';
-  const openTasks = all.filter((t) => t.status === 'open');
+  const openTasks = all.filter((t) => t.status === 'open' && !t.is_template);
+  const templates = all.filter((t) => t.is_template);
   // Завершение: клик по кольцу. Остались невыполненные — окно с выбором. Проект сам не закрывается.
   const finish = (how: 'completed' | 'canceled') => {
     setAsk(false);
     const mode = store.settings.log_mode;
+    // Завершённый проект больше не повторяется: шаблоны становятся обычными задачами и закрываются вместе с остальными.
+    for (const t of templates) {
+      void store.stopRepeat(t.id).then(() => store.patch('tasks', t.id, how === 'completed' ? completeFields(mode) : { status: 'canceled', completed_at: new Date().toISOString() }));
+    }
     store.withUndo('Проект завершён', () => {
       for (const t of openTasks) {
         store.patch('tasks', t.id, how === 'completed' ? completeFields(mode) : { status: 'canceled', completed_at: new Date().toISOString() });

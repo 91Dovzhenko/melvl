@@ -5,6 +5,8 @@ import { addDays, dueChip, fmtMin, shortDate } from '../lib/dates';
 import { projectName, skillOf } from '../lib/views';
 import { EstimatePicker, SkillGlyph, SkillPicker, WhenPicker } from './pickers';
 import { MovePicker, TaskContextMenu, useTaskActions } from './actions';
+import { RepeatDialog, templateOf } from './repeat';
+import { describe } from '../lib/repeat';
 import type { Task } from '../lib/types';
 import { useEditing } from './editing';
 import { useIsPhone } from '../ui/useIsPhone';
@@ -36,6 +38,14 @@ export function TaskList({ tasks, mode = {}, draftHere = false }: { tasks: Task[
 }
 
 function Checkbox({ task, size }: { task: Task; size: 'mac' | 'phone' }) {
+  if (task.is_template) {
+    // Шаблон повтора не выполняется — выполняются его копии.
+    return <span className={'cb dashed' + (size === 'phone' ? ' cb-phone' : '')} title="Шаблон повтора" aria-hidden="true" style={{ opacity: .5 }} />;
+  }
+  return <CheckboxInner task={task} size={size} />;
+}
+
+function CheckboxInner({ task, size }: { task: Task; size: 'mac' | 'phone' }) {
   const { patch, settings } = useStore();
   const done = task.status === 'completed';
   return (
@@ -78,7 +88,9 @@ export function TaskRow({ task, mode }: { task: Task; mode: RowMode }) {
 
   let chip: React.ReactNode = null;
   if (mode.dueChips) {
-    if (task.someday) chip = <span className="due-chip">Когда-нибудь</span>;
+    const rule = task.is_template ? store.rules.find((r) => r.task_id === task.id) : undefined;
+    if (task.is_template) chip = <span className="due-chip" title={rule?.next_date ? `Следующая копия: ${shortDate(rule.next_date)}` : 'Ждёт выполнения копии'}>Ожидание</span>;
+    else if (task.someday) chip = <span className="due-chip">Когда-нибудь</span>;
     else if (task.when_date && task.when_date <= today) chip = <TodaySquare />;
     else if (task.when_date) chip = <span className="due-chip">{dueChip(task.when_date, today)}</span>;
   }
@@ -103,6 +115,9 @@ export function TaskRow({ task, mode }: { task: Task; mode: RowMode }) {
           {chip && <span className="lead">{chip}</span>}
           <span className="row-title">{task.title || <span className="muted">Без названия</span>}</span>
           {task.notes.trim() && <span className="trail icon"><Icon name="note" size={13} color="#8E9289" width={1.9} /></span>}
+          {(task.is_template || task.repeat_template_id) && (
+            <span className="trail icon" role="img" aria-label="Повторяется"><Icon name="repeat" size={13} color="#8E9289" width={1.9} /></span>
+          )}
           {task.estimate_min !== null && <span className="trail"><span className="est">{fmtMin(task.estimate_min)}</span></span>}
           {skill && !phone && (
             <span className="trail">
@@ -194,6 +209,7 @@ export function TaskCard({ task }: { task?: Task }) {
   // Свойства: у сохранённой задачи — сразу в базу, у новой — в черновик.
   const set = (changes: Partial<Task>) => (task ? store.patch('tasks', task.id, changes) : ed.patchDraft(changes));
   const [pop, setPop] = useState<{ kind: PropKind; anchor: HTMLElement } | null>(null);
+  const [repeatOpen, setRepeatOpen] = useState(false);
   const openPop = (kind: PropKind) => (e: React.MouseEvent<HTMLElement>) => setPop({ kind, anchor: e.currentTarget });
   const sk = skillOf(store, { skill_id: fields.skill_id ?? null, project_id: fields.project_id ?? null });
   const inheritedSkill = skillOf(store, { skill_id: null, project_id: fields.project_id ?? null }).skill;
@@ -210,6 +226,14 @@ export function TaskCard({ task }: { task?: Task }) {
     });
   }
   if (fields.estimate_min != null) chips.push({ key: 'est', label: 'Оценка', node: <><Icon name="estimate" size={14} color="#3E423C" width={1.9} />{fmtMin(fields.estimate_min)}</> });
+  const tpl = task ? templateOf(store.tasks, task) : null;
+  const rule = tpl ? store.rules.find((r) => r.task_id === tpl.id) : undefined;
+  if (rule) chips.push({
+    key: 'repeat', label: 'Повтор',
+    node: <><Icon name="repeat" size={14} color="#3E423C" width={1.9} />{describe(rule)}
+      {task?.is_template && <span className="sub">· {rule.next_date ? `следующая ${shortDate(rule.next_date)}` : 'после выполнения копии'}</span>}
+      {task?.repeat_template_id && <span className="sub">· копия</span>}</>,
+  });
   if (sk.skill) chips.push({
     key: 'skill', cls: 'skill', label: 'Навык',
     node: <><SkillGlyph skill={sk.skill} size={14} color="#3D6A00" />{sk.skill.name}{sk.inherited && <span className="sub">· из проекта</span>}</>,
@@ -217,7 +241,7 @@ export function TaskCard({ task }: { task?: Task }) {
   if (fields.project_id) chips.push({ key: 'proj', label: 'Проект', node: <><Icon name="project" size={14} color="#3E423C" width={1.9} />{projectName(store, fields.project_id)}</> });
 
   const unset: { key: PropKind; icon: IconName; label: string }[] = [];
-  if (!fields.when_date && !fields.someday) unset.push({ key: 'when', icon: 'when', label: 'Когда' });
+  if (!fields.when_date && !fields.someday && !fields.is_template) unset.push({ key: 'when', icon: 'when', label: 'Когда' });
   if (fields.estimate_min == null) unset.push({ key: 'est', icon: 'estimate', label: 'Оценка' });
   if (!sk.skill) unset.push({ key: 'skill', icon: 'skill', label: 'Навык' });
   if (!fields.project_id) unset.push({ key: 'proj', icon: 'project', label: 'Переместить в проект' });
@@ -250,9 +274,12 @@ export function TaskCard({ task }: { task?: Task }) {
               <Icon name={u.icon} size={17} color="#3E423C" />
             </button>
           ))}
-          <button type="button" className="prop-btn" aria-label="Повтор" title="Повтор — п. 5 сборки" disabled>
-            <Icon name="repeat" size={17} color="#3E423C" />
-          </button>
+          {!rule && (
+            <button type="button" className="prop-btn" aria-label="Повтор" title={task ? 'Повтор' : 'Повтор — после сохранения задачи'}
+              disabled={!task} onClick={() => setRepeatOpen(true)}>
+              <Icon name="repeat" size={17} color="#3E423C" />
+            </button>
+          )}
           <button type="button" className="prop-btn" aria-label="Дедлайн" title="Дедлайн — этап 3" disabled>
             <Icon name="deadline" size={17} color="#8E9289" />
           </button>
@@ -270,6 +297,8 @@ export function TaskCard({ task }: { task?: Task }) {
         <SkillPicker anchor={pop.anchor} onClose={() => setPop(null)} value={fields.skill_id ?? null} inherited={inheritedSkill}
           onPick={(id) => set({ skill_id: id })} />
       )}
+      {pop?.kind === 'repeat' && task && <RepeatDialog task={task} onClose={() => setPop(null)} />}
+      {repeatOpen && task && <RepeatDialog task={task} onClose={() => setRepeatOpen(false)} />}
       {pop?.kind === 'proj' && (
         <MovePicker anchor={pop.anchor} onClose={() => setPop(null)}
           task={{ project_id: fields.project_id ?? null, area_id: fields.area_id ?? null }}
@@ -279,4 +308,4 @@ export function TaskCard({ task }: { task?: Task }) {
   );
 }
 
-type PropKind = 'when' | 'est' | 'skill' | 'proj';
+type PropKind = 'when' | 'est' | 'skill' | 'proj' | 'repeat';

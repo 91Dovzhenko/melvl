@@ -16,8 +16,10 @@ const MONTHS_SHORT = ['янв.', 'февр.', 'март', 'апр.', 'май', '
 const MONTHS_GEN = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
 
 /** Окно «Когда»: Сегодня, Сегодня вечером, Завтра, календарь, Когда-нибудь, Убрать срок. */
-export function WhenPicker({ value, anchor, onPick, onClose }: {
+export function WhenPicker({ value, anchor, onPick, onClose, dateOnly }: {
   value: When; anchor: Anchor | null; onPick: (v: When) => void; onClose: () => void;
+  /** Только дата (в окне повтора): без «вечером», «когда-нибудь» и «убрать срок». */
+  dateOnly?: boolean;
 }) {
   const today = useToday();
   const phone = useIsPhone();
@@ -64,8 +66,10 @@ export function WhenPicker({ value, anchor, onPick, onClose }: {
     <Pop anchor={anchor} onClose={onClose} title="Когда" width={280}>
       <PopItem icon="today" iconColor="#C5F25A" label="Сегодня" selected={isToday && !value.when_evening}
         onClick={() => pick({ when_date: today, when_evening: false, someday: false })} />
-      <PopItem icon="evening" label="Сегодня вечером" selected={isToday && value.when_evening}
-        onClick={() => pick({ when_date: today, when_evening: true, someday: false })} />
+      {!dateOnly && (
+        <PopItem icon="evening" label="Сегодня вечером" selected={isToday && value.when_evening}
+          onClick={() => pick({ when_date: today, when_evening: true, someday: false })} />
+      )}
       <PopItem icon="tomorrow" label="Завтра" hint={`${WD_SHORT[tm.getDay()]}, ${tm.getDate()} ${MONTHS[tm.getMonth()]}`}
         selected={!value.someday && value.when_date === tomorrow}
         onClick={() => pick({ when_date: tomorrow, when_evening: false, someday: false })} />
@@ -74,11 +78,15 @@ export function WhenPicker({ value, anchor, onPick, onClose }: {
         {WD.map((w) => <span key={w} className="cal-wd">{w}</span>)}
         {cells}
       </div>
-      <PopSep />
-      <PopItem icon="someday" label="Когда-нибудь" selected={value.someday}
-        onClick={() => pick({ when_date: null, when_evening: false, someday: true })} />
-      <PopItem icon="clear" label="Убрать срок" muted
-        onClick={() => pick({ when_date: null, when_evening: false, someday: false })} />
+      {!dateOnly && (
+        <>
+          <PopSep />
+          <PopItem icon="someday" label="Когда-нибудь" selected={value.someday}
+            onClick={() => pick({ when_date: null, when_evening: false, someday: true })} />
+          <PopItem icon="clear" label="Убрать срок" muted
+            onClick={() => pick({ when_date: null, when_evening: false, someday: false })} />
+        </>
+      )}
     </Pop>
   );
 }

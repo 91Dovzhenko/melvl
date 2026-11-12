@@ -636,3 +636,29 @@ button.cal-cell:hover { background: var(--dark-hover); }
 .opt-card.on .opt-dot { border-color: var(--accent-dark); }
 .opt-card.on .opt-dot::after { content: ''; width: 8px; height: 8px; border-radius: 4px; background: var(--accent-dark); }
 .skill-select { align-self: flex-start; height: 34px; border: 1px solid var(--dash); border-radius: 9px; background: #FFFFFF; padding: 0 10px; display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; color: var(--text); cursor: pointer; font-family: inherit; }
+
+/* Окно «Повторять»: 560, вкладки 4 типа, блок полей #F7F8F5 */
+.modal.rep { width: 560px; gap: 16px; }
+.rep-tabs { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.rep-tabs button { white-space: nowrap; padding: 0 4px; }
+@media (max-width: 520px) { .rep-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.rep-box { background: var(--bg-quiet); border-radius: 16px; padding: 4px 16px; display: flex; flex-direction: column; }
+.rep-line { display: flex; align-items: center; gap: 8px; padding: 12px 0; font-size: 14px; font-weight: 600; flex-wrap: wrap; }
+.rep-line.ruled { border-top: 1px solid var(--line-menu); }
+.rep-cap { width: 132px; color: var(--text-muted); }
+@media (max-width: 520px) { .rep-cap { width: 110px; } }
+.rep-num { width: 44px; height: 30px; box-sizing: border-box; border: 1px solid var(--dash); border-radius: 8px; background: #FFFFFF; text-align: center; font-size: 14px; font-weight: 700; color: var(--text); font-family: inherit; outline: none; }
+.rep-num:focus { border-color: var(--accent-dark); }
+.rep-drop { height: 30px; border: 1px solid var(--dash); border-radius: 8px; background: #FFFFFF; padding: 0 10px; display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; color: var(--text); cursor: pointer; font-family: inherit; }
+.rep-days { display: flex; gap: 6px; padding: 0 0 12px 140px; flex-wrap: wrap; }
+@media (max-width: 520px) { .rep-days { padding-left: 0; } }
+.rep-day { width: 38px; height: 30px; border: 1px solid var(--dash); border-radius: 8px; background: #FFFFFF; color: var(--text); font-size: 13px; font-weight: 600; cursor: pointer; box-sizing: border-box; font-family: inherit; }
+.rep-day.on { background: var(--accent); border-color: var(--accent); font-weight: 800; }
+.btn-lime:disabled { opacity: .45; cursor: default; }
+.mday-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.mday { height: 28px; border: 0; border-radius: 7px; background: transparent; font-size: 13px; font-weight: 700; cursor: pointer; font-family: inherit; color: var(--text); }
+.mday:hover { background: var(--bg-quiet); }
+.mday.on { background: var(--accent); }
+.modal-scrim .pop, .modal-scrim ~ .pop { z-index: 80; }
+.pop { z-index: 80; }
+.sheet-scrim { z-index: 80; }

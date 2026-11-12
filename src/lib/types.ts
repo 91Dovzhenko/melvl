@@ -19,6 +19,8 @@ export type Task = {
   status: Status; completed_at: string | null; logged_at: string | null;
   sort_order: number; today_order: number;
   repeat_template_id: string | null; repeat_date: string | null;
+  /** Шаблон повтора: в списках не показывается, по нему создаются копии. */
+  is_template: boolean;
   created_at: string; deleted_at: string | null;
 };
 
