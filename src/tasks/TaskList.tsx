@@ -242,6 +242,8 @@ export function TaskCard({ task }: { task?: Task }) {
   if (rule) chips.push({
     key: 'repeat', label: 'Повтор',
     node: <><Icon name="repeat" size={14} color="#3E423C" width={1.9} />{describe(rule)}
+      {/* Задача 13: подпись «привычка» — вторая часть плашки, как «из проекта» у навыка. */}
+      {rule.is_habit && <span className="sub">· привычка</span>}
       {task?.is_template && <span className="sub">· {rule.next_date ? `следующая ${shortDate(rule.next_date)}` : 'после выполнения копии'}</span>}
       {task?.repeat_template_id && <span className="sub">· копия</span>}</>,
   });

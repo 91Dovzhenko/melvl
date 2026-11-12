@@ -8,7 +8,7 @@ let n = 0;
 const task = (o: Partial<Task>): Task => ({
   id: `t${++n}`, project_id: null, area_id: null, title: '', notes: '', when_date: null, when_evening: false,
   someday: false, estimate_min: null, skill_id: null, deadline: null, status: 'open', completed_at: null,
-  logged_at: null, sort_order: n, today_order: n, repeat_template_id: null, repeat_date: null, is_template: false,
+  logged_at: null, sort_order: n, today_order: n, repeat_template_id: null, repeat_date: null, is_template: false, is_habit: false,
   created_at: '', deleted_at: null, ...o,
 });
 

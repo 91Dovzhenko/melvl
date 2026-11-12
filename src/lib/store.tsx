@@ -31,7 +31,7 @@ type Store = Data & {
 };
 
 type ToastAction = { label: string; run: () => void };
-export type RepeatInput = Pick<RepeatRule, 'kind' | 'every' | 'unit' | 'weekdays' | 'month_day' | 'end_date'> & { start: string };
+export type RepeatInput = Pick<RepeatRule, 'kind' | 'every' | 'unit' | 'weekdays' | 'month_day' | 'end_date' | 'is_habit'> & { start: string };
 type UndoStep =
   | { kind: 'insert'; table: TableName; id: string }
   | { kind: 'remove'; table: TableName; row: { id: string } }
@@ -60,7 +60,7 @@ function defaults<T extends TableName>(table: T, row: Partial<Tables[T]>): Table
   if (table === 'tasks') return {
     ...base, project_id: null, area_id: null, title: '', notes: '', when_date: null, when_evening: false,
     someday: false, estimate_min: null, skill_id: null, deadline: null, status: 'open', completed_at: null,
-    logged_at: null, today_order: Date.now() / 1000, repeat_template_id: null, repeat_date: null, is_template: false, created_at: now(), ...row,
+    logged_at: null, today_order: Date.now() / 1000, repeat_template_id: null, repeat_date: null, is_template: false, is_habit: false, created_at: now(), ...row,
   } as Tables[T];
   return { ...base, name: '', branch: 'creator', icon: '', active: true, ...row } as Tables[T];
 }
@@ -100,7 +100,7 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
       supabase.from('tasks').select('*').is('deleted_at', null).order('sort_order'),
       supabase.from('skills').select('*').is('deleted_at', null).order('sort_order'),
       supabase.from('settings').select('log_mode,today_view,last_auto_log').maybeSingle(),
-      supabase.from('repeat_rules').select('task_id,kind,every,unit,weekdays,month_day,anchor_date,next_date,end_date'),
+      supabase.from('repeat_rules').select('task_id,kind,every,unit,weekdays,month_day,anchor_date,next_date,end_date,is_habit'),
     ]);
     const err = init.error || a.error || p.error || t.error || s.error || st.error;
     if (err) { toast('Не удалось загрузить данные'); console.error(err); }
@@ -339,7 +339,7 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
     }
     const { error } = await supabase.rpc('set_repeat', {
       p_task: taskId, p_kind: r.kind, p_every: r.every, p_unit: r.unit, p_weekdays: r.weekdays,
-      p_month_day: r.month_day, p_start: r.start, p_end: r.end_date, p_today: todayISO(),
+      p_month_day: r.month_day, p_start: r.start, p_end: r.end_date, p_today: todayISO(), p_habit: r.is_habit,
     });
     if (error) { console.error(error); toast('Повтор не сохранился — проверьте связь'); }
     await load();
@@ -348,7 +348,7 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
   const stopRepeat = useCallback(async (taskId: string) => {
     if (!supabase || offline) {
       setData((d) => ({ ...d, rules: d.rules.filter((r) => r.task_id !== taskId),
-        tasks: d.tasks.map((t) => (t.id === taskId ? { ...t, is_template: false } : t)) }));
+        tasks: d.tasks.map((t) => (t.id === taskId ? { ...t, is_template: false, is_habit: false } : t)) }));
       return;
     }
     const { error } = await supabase.rpc('stop_repeat', { p_task: taskId });
@@ -395,12 +395,15 @@ function setRuleLocal(d: Data, taskId: string, r: RepeatInput): Data {
   const rule: RepeatRule = {
     task_id: taskId, kind: r.kind, every: Math.max(r.every, 1), unit: r.unit, weekdays: r.weekdays, month_day: r.month_day,
     anchor_date: r.start, next_date: repeatFirst(r.kind, r.every, r.weekdays, r.month_day, r.start), end_date: r.end_date,
+    is_habit: r.is_habit,
   };
   return {
     ...d,
     rules: [...d.rules.filter((x) => x.task_id !== taskId), rule],
+    // Флажок привычки — у шаблона и у ещё не выполненных копий; выполненные не трогаем.
     tasks: d.tasks.map((t) => (t.id === taskId
-      ? { ...t, is_template: true, when_date: null, someday: false, status: 'open', completed_at: null, logged_at: null } : t)),
+      ? { ...t, is_template: true, is_habit: r.is_habit, when_date: null, someday: false, status: 'open', completed_at: null, logged_at: null }
+      : t.repeat_template_id === taskId && t.status === 'open' ? { ...t, is_habit: r.is_habit } : t)),
   };
 }
 
@@ -422,7 +425,7 @@ function generateLocal(d: Data, today: string): Data {
     if (!tasks.some((x) => x.repeat_template_id === t.id && x.repeat_date === nd)) {
       tasks = [...tasks, { ...t, id: crypto.randomUUID(), is_template: false, when_date: nd, someday: false,
         status: 'open', completed_at: null, logged_at: null, deadline: null, today_order: Date.now() / 1000,
-        repeat_template_id: t.id, repeat_date: nd, created_at: new Date().toISOString() }];
+        repeat_template_id: t.id, repeat_date: nd, is_habit: r.is_habit, created_at: new Date().toISOString() }];
     }
     let next: string | null = r.kind === 'after_completion' ? null : repeatNext(r.kind, r.every, r.weekdays, r.month_day, r.anchor_date, nd);
     if (next && r.end_date && next > r.end_date) next = null;

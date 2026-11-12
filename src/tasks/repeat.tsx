@@ -7,12 +7,13 @@ import type { Task } from '../lib/types';
 import { Icon } from '../ui/icons';
 import { Pop, PopItem } from '../ui/Pop';
 import { WhenPicker } from './pickers';
+import { useIsPhone } from '../ui/useIsPhone';
 
-const TABS: { kind: RepeatKind; label: string }[] = [
-  { kind: 'after_completion', label: 'После выполнения' },
-  { kind: 'daily', label: 'По дням' },
-  { kind: 'weekly', label: 'По неделям' },
-  { kind: 'monthly', label: 'По месяцам' },
+const TABS: { kind: RepeatKind; label: string; short: string }[] = [
+  { kind: 'after_completion', label: 'После выполнения', short: 'После' },
+  { kind: 'daily', label: 'По дням', short: 'Дни' },
+  { kind: 'weekly', label: 'По неделям', short: 'Недели' },
+  { kind: 'monthly', label: 'По месяцам', short: 'Месяцы' },
 ];
 const WD = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 const UNITS: { value: RepeatUnit; label: string }[] = [{ value: 'day', label: 'день' }, { value: 'week', label: 'неделю' }, { value: 'month', label: 'месяц' }];
@@ -46,7 +47,9 @@ export function RepeatDialog({ task, onClose }: { task: Task; onClose: () => voi
   const [start, setStart] = useState(start0 < today ? today : start0);
   const [end, setEnd] = useState<string | null>(rule?.end_date ?? null);
   const [pop, setPop] = useState<{ kind: 'unit' | 'start' | 'end' | 'endDate' | 'mday'; anchor: HTMLElement } | null>(null);
+  const [habit, setHabit] = useState<boolean>(rule?.is_habit ?? false);
   const [busy, setBusy] = useState(false);
+  const phone = useIsPhone();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !pop) { e.stopPropagation(); onClose(); } };
@@ -69,7 +72,7 @@ export function RepeatDialog({ task, onClose }: { task: Task; onClose: () => voi
   const save = async () => {
     if (!valid || busy) return;
     setBusy(true);
-    await store.setRepeat(target.id, { ...draft, start });
+    await store.setRepeat(target.id, { ...draft, start, is_habit: habit });
     setBusy(false);
     onClose();
   };
@@ -81,6 +84,124 @@ export function RepeatDialog({ task, onClose }: { task: Task; onClose: () => voi
   };
   const startLabel = start === today ? `Сегодня, ${shortDate(start)}` : start === addDays(today, 1) ? `Завтра, ${shortDate(start)}` : shortDate(start);
 
+  const chev = <Icon name="chevronDown" size={12} color="#5F635C" width={2.2} />;
+  const chevRight = <Icon name="chevronRight" size={16} color="#8E9289" width={2} />;
+  const numInput = (label: string) => (
+    <input className="rep-num" inputMode="numeric" value={every} aria-label={label} onChange={(e) => setEvery(e.target.value.replace(/\D/g, ''))} />
+  );
+  const unitDrop = (
+    <button type="button" className="rep-drop" onClick={(e) => setPop({ kind: 'unit', anchor: e.currentTarget })}>
+      {UNITS.find((u) => u.value === unit)!.label}{chev}
+    </button>
+  );
+  const mdayDrop = (
+    <button type="button" className="rep-drop" onClick={(e) => setPop({ kind: 'mday', anchor: e.currentTarget })}>
+      {monthDay}-го числа{chev}
+    </button>
+  );
+  const days = kind === 'weekly' && (
+    <div className="rep-days">
+      {WD.map((w, i) => {
+        const on = weekdays.includes(i + 1);
+        return (
+          <button key={w} type="button" aria-pressed={on} className={'rep-day' + (on ? ' on' : '')}
+            onClick={() => setWeekdays((cur) => (on ? cur.filter((x) => x !== i + 1) : [...cur, i + 1]))}>{w}</button>
+        );
+      })}
+    </div>
+  );
+  const tabs = (
+    <div role="tablist" aria-label="Тип повтора" className="set-seg rep-tabs">
+      {TABS.map((t) => (
+        <button key={t.kind} type="button" role="tab" aria-selected={kind === t.kind} aria-checked={kind === t.kind}
+          aria-label={t.label} onClick={() => setKind(t.kind)}>{phone ? t.short : t.label}</button>
+      ))}
+    </div>
+  );
+  const copyNote = tpl && task.repeat_template_id && (
+    <p className="set-sub" style={{ margin: 0 }}>Это копия повторяющейся задачи. Изменения правила относятся к будущим копиям.</p>
+  );
+  const habitRow = (
+    <div className="rep-habit">
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <span id="rep-habit-label" className="rep-habit-t">Это привычка</span>
+        <span className="rep-habit-s">Учитывается в регулярности привычек на витрине</span>
+      </div>
+      <button type="button" role="switch" aria-checked={habit} aria-labelledby="rep-habit-label"
+        className={'switch' + (habit ? ' on' : '')} onClick={() => setHabit((h) => !h)}><span /></button>
+    </div>
+  );
+  const pops = (
+    <>
+      {pop?.kind === 'unit' && (
+        <Pop anchor={pop.anchor} onClose={() => setPop(null)} variant="light" width={180} title="Единица">
+          {UNITS.map((u) => <PopItem key={u.value} label={u.label} selected={u.value === unit} onClick={() => { setUnit(u.value); setPop(null); }} />)}
+        </Pop>
+      )}
+      {pop?.kind === 'mday' && (
+        <Pop anchor={pop.anchor} onClose={() => setPop(null)} variant="light" width={240} title="Число месяца">
+          <div className="mday-grid">
+            {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+              <button key={d} type="button" className={'mday' + (d === monthDay ? ' on' : '')} onClick={() => { setMonthDay(d); setPop(null); }}>{d}</button>
+            ))}
+          </div>
+        </Pop>
+      )}
+      {(pop?.kind === 'start' || pop?.kind === 'endDate') && (
+        <WhenPicker anchor={pop.anchor} onClose={() => setPop(null)} dateOnly
+          value={{ when_date: pop.kind === 'start' ? start : end, when_evening: false, someday: false }}
+          onPick={(v) => { if (!v.when_date) return; if (pop.kind === 'start') setStart(v.when_date); else setEnd(v.when_date); }} />
+      )}
+      {pop?.kind === 'end' && (
+        <Pop anchor={pop.anchor} onClose={() => setPop(null)} variant="light" width={200} title="Окончание">
+          <PopItem label="Никогда" selected={!end} onClick={() => { setEnd(null); setPop(null); }} />
+          <PopItem label="Выбрать дату…" selected={!!end} onClick={(() => { const a = pop.anchor; return () => setPop({ kind: 'endDate', anchor: a }); })()} />
+        </Pop>
+      )}
+    </>
+  );
+  const startCap = kind === 'after_completion' ? 'Первый раз' : 'Следующий раз';
+  const endLabel = end ? shortDate(end) : 'никогда';
+  const hintText = valid ? hint : 'Выберите хотя бы один день недели';
+
+  /* iPhone · белый лист-форма (раздел 9 спецификации): шапка «Отменить · Повторять · Готово». */
+  if (phone) {
+    return createPortal(
+      <div className="rep-sheet-scrim" data-keep-card onClick={onClose}>
+        <div className="rep-sheet" role="dialog" aria-modal="true" aria-labelledby="rep-title" onClick={(e) => e.stopPropagation()}>
+          <span className="rep-grip" aria-hidden="true" />
+          <div className="rep-head">
+            <button type="button" className="rep-cancel" onClick={onClose}>Отменить</button>
+            <h2 id="rep-title"><Icon name="repeat" size={18} width={1.9} />Повторять</h2>
+            <button type="button" className="rep-done" disabled={!valid || busy} onClick={save}>Готово</button>
+          </div>
+          {copyNote}
+          {tabs}
+          <div className="rep-box">
+            <div className="rep-line">
+              {kind === 'after_completion'
+                ? <><span className="rep-cap-p">Через</span>{numInput('Сколько')}{unitDrop}<span>после выполнения</span></>
+                : <><span className="rep-cap-p">Раз в</span>{numInput('Интервал')}
+                  <span>{kind === 'daily' ? 'дн.' : kind === 'weekly' ? 'нед. в' : 'мес.'}</span>{kind === 'monthly' && mdayDrop}</>}
+            </div>
+            {days}
+            <button type="button" className="rep-row" onClick={(e) => setPop({ kind: 'start', anchor: e.currentTarget })}>
+              <span className="rep-cap-p" style={{ flex: 1 }}>{startCap}</span><span>{startLabel}</span>{chevRight}
+            </button>
+            <button type="button" className="rep-row" onClick={(e) => setPop({ kind: 'end', anchor: e.currentTarget })}>
+              <span className="rep-cap-p" style={{ flex: 1 }}>Окончание</span><span>{endLabel}</span>{chevRight}
+            </button>
+          </div>
+          <span className="rep-hint-p">{hintText}</span>
+          {habitRow}
+          {rule && <button type="button" className="btn-text rep-stop" disabled={busy} onClick={stop}>Остановить повтор</button>}
+        </div>
+        {pops}
+      </div>,
+      document.body,
+    );
+  }
+
   return createPortal(
     <div className="modal-scrim" data-keep-card onClick={onClose}>
       <div className="modal rep" role="dialog" aria-modal="true" aria-labelledby="rep-title" onClick={(e) => e.stopPropagation()}>
@@ -88,68 +209,36 @@ export function RepeatDialog({ task, onClose }: { task: Task; onClose: () => voi
           <Icon name="repeat" size={20} width={1.9} />
           <h2 id="rep-title">Повторять</h2>
         </div>
-        {tpl && task.repeat_template_id && (
-          <p className="set-sub" style={{ margin: 0 }}>Это копия повторяющейся задачи. Изменения правила относятся к будущим копиям.</p>
-        )}
-        <div role="tablist" aria-label="Тип повтора" className="set-seg rep-tabs">
-          {TABS.map((t) => (
-            <button key={t.kind} type="button" role="tab" aria-selected={kind === t.kind} aria-checked={kind === t.kind}
-              onClick={() => setKind(t.kind)}>{t.label}</button>
-          ))}
-        </div>
+        {copyNote}
+        {tabs}
 
         <div className="rep-box">
           {kind === 'after_completion' && (
-            <div className="rep-line">
-              <span>Через</span>
-              <input className="rep-num" inputMode="numeric" value={every} aria-label="Сколько" onChange={(e) => setEvery(e.target.value.replace(/\D/g, ''))} />
-              <button type="button" className="rep-drop" onClick={(e) => setPop({ kind: 'unit', anchor: e.currentTarget })}>
-                {UNITS.find((u) => u.value === unit)!.label}<Icon name="chevronDown" size={12} color="#5F635C" width={2.2} />
-              </button>
-              <span>после выполнения</span>
-            </div>
+            <div className="rep-line"><span>Через</span>{numInput('Сколько')}{unitDrop}<span>после выполнения</span></div>
           )}
           {kind !== 'after_completion' && (
             <div className="rep-line">
-              <span className="rep-cap">Раз в</span>
-              <input className="rep-num" inputMode="numeric" value={every} aria-label="Интервал" onChange={(e) => setEvery(e.target.value.replace(/\D/g, ''))} />
+              <span className="rep-cap">Раз в</span>{numInput('Интервал')}
               <span>{kind === 'daily' ? 'дн.' : kind === 'weekly' ? 'нед. в' : 'мес.'}</span>
-              {kind === 'monthly' && (
-                <button type="button" className="rep-drop" onClick={(e) => setPop({ kind: 'mday', anchor: e.currentTarget })}>
-                  {monthDay}-го числа<Icon name="chevronDown" size={12} color="#5F635C" width={2.2} />
-                </button>
-              )}
+              {kind === 'monthly' && mdayDrop}
             </div>
           )}
-          {kind === 'weekly' && (
-            <div className="rep-days">
-              {WD.map((w, i) => {
-                const on = weekdays.includes(i + 1);
-                return (
-                  <button key={w} type="button" aria-pressed={on} className={'rep-day' + (on ? ' on' : '')}
-                    onClick={() => setWeekdays((cur) => (on ? cur.filter((x) => x !== i + 1) : [...cur, i + 1]))}>{w}</button>
-                );
-              })}
-            </div>
-          )}
+          {days}
           <div className="rep-line ruled">
-            <span className="rep-cap">{kind === 'after_completion' ? 'Первый раз' : 'Следующий раз'}</span>
-            <button type="button" className="rep-drop" onClick={(e) => setPop({ kind: 'start', anchor: e.currentTarget })}>
-              {startLabel}<Icon name="chevronDown" size={12} color="#5F635C" width={2.2} />
-            </button>
+            <span className="rep-cap">{startCap}</span>
+            <button type="button" className="rep-drop" onClick={(e) => setPop({ kind: 'start', anchor: e.currentTarget })}>{startLabel}{chev}</button>
           </div>
           <div className="rep-line ruled">
             <span className="rep-cap">Окончание</span>
-            <button type="button" className="rep-drop" onClick={(e) => setPop({ kind: 'end', anchor: e.currentTarget })}>
-              {end ? shortDate(end) : 'никогда'}<Icon name="chevronDown" size={12} color="#5F635C" width={2.2} />
-            </button>
+            <button type="button" className="rep-drop" onClick={(e) => setPop({ kind: 'end', anchor: e.currentTarget })}>{endLabel}{chev}</button>
           </div>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600, color: '#5F635C' }}>
           <Icon name="when" size={15} color="#8E9289" />
-          <span>{valid ? hint : 'Выберите хотя бы один день недели'}</span>
+          <span>{hintText}</span>
         </div>
+        {habitRow}
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
           {rule ? <button type="button" className="btn-text" style={{ padding: '0 8px' }} disabled={busy} onClick={stop}>Остановить повтор</button> : <span />}
           <div style={{ display: 'flex', gap: 8 }}>
@@ -157,32 +246,7 @@ export function RepeatDialog({ task, onClose }: { task: Task; onClose: () => voi
             <button type="button" className="btn-lime" style={{ height: 40, padding: '0 22px' }} disabled={!valid || busy} onClick={save}>Готово</button>
           </div>
         </div>
-
-        {pop?.kind === 'unit' && (
-          <Pop anchor={pop.anchor} onClose={() => setPop(null)} variant="light" width={180} title="Единица">
-            {UNITS.map((u) => <PopItem key={u.value} label={u.label} selected={u.value === unit} onClick={() => { setUnit(u.value); setPop(null); }} />)}
-          </Pop>
-        )}
-        {pop?.kind === 'mday' && (
-          <Pop anchor={pop.anchor} onClose={() => setPop(null)} variant="light" width={240} title="Число месяца">
-            <div className="mday-grid">
-              {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
-                <button key={d} type="button" className={'mday' + (d === monthDay ? ' on' : '')} onClick={() => { setMonthDay(d); setPop(null); }}>{d}</button>
-              ))}
-            </div>
-          </Pop>
-        )}
-        {(pop?.kind === 'start' || pop?.kind === 'endDate') && (
-          <WhenPicker anchor={pop.anchor} onClose={() => setPop(null)} dateOnly
-            value={{ when_date: pop.kind === 'start' ? start : end, when_evening: false, someday: false }}
-            onPick={(v) => { if (!v.when_date) return; if (pop.kind === 'start') setStart(v.when_date); else setEnd(v.when_date); }} />
-        )}
-        {pop?.kind === 'end' && (
-          <Pop anchor={pop.anchor} onClose={() => setPop(null)} variant="light" width={200} title="Окончание">
-            <PopItem label="Никогда" selected={!end} onClick={() => { setEnd(null); setPop(null); }} />
-            <PopItem label="Выбрать дату…" selected={!!end} onClick={(() => { const a = pop.anchor; return () => setPop({ kind: 'endDate', anchor: a }); })()} />
-          </Pop>
-        )}
+        {pops}
       </div>
     </div>,
     document.body,

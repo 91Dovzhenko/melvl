@@ -21,6 +21,8 @@ export type Task = {
   repeat_template_id: string | null; repeat_date: string | null;
   /** Шаблон повтора: в списках не показывается, по нему создаются копии. */
   is_template: boolean;
+  /** Привычка: копия повтора-привычки (флажок наследуется от правила). */
+  is_habit: boolean;
   created_at: string; deleted_at: string | null;
 };
 

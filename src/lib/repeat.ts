@@ -16,6 +16,8 @@ export type RepeatRule = {
   anchor_date: string | null;
   next_date: string | null;
   end_date: string | null;
+  /** «Это привычка» — учитывается в регулярности привычек на витрине. */
+  is_habit: boolean;
 };
 
 const isoDow = (d: string) => ((parseISO(d).getDay() + 6) % 7) + 1;
