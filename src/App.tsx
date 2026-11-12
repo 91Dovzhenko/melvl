@@ -12,6 +12,8 @@ import { ProjectScreen } from './screens/Project';
 import { AreaScreen } from './screens/Area';
 import { Plans } from './screens/Plans';
 import { Log } from './screens/Log';
+import { SettingsScreen } from './screens/Settings';
+import { AccountProvider } from './lib/account';
 import { Popover, Sidebar, useCreateList } from './shell/Sidebar';
 import { PhoneMenu } from './shell/PhoneMenu';
 import { EditingProvider, useEditing } from './tasks/editing';
@@ -28,9 +30,11 @@ export default function App() {
     <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '')}>
       <NavBridge />
       {PREVIEW ? (
-        <StoreProvider offline seed={PREVIEW_SEED}>
-          <EditingProvider><Shell email="demo@example.com" /></EditingProvider>
-        </StoreProvider>
+        <AccountProvider value={{ email: 'demo@example.com', name: 'Демо' }}>
+          <StoreProvider offline seed={PREVIEW_SEED}>
+            <EditingProvider><Shell /></EditingProvider>
+          </StoreProvider>
+        </AccountProvider>
       ) : <Gate />}
     </BrowserRouter>
   );
@@ -40,10 +44,14 @@ function Gate() {
   const s = useSession();
   if (s.status === 'loading') return <div className="login-page" aria-busy="true" />;
   if (s.status === 'out') return <Login />;
+  const u = s.session.user;
+  const meta = (u.user_metadata ?? {}) as { full_name?: string; name?: string };
   return (
-    <StoreProvider>
-      <EditingProvider><Shell email={s.session.user.email ?? ''} /></EditingProvider>
-    </StoreProvider>
+    <AccountProvider value={{ email: u.email ?? '', name: meta.full_name || meta.name || '' }}>
+      <StoreProvider>
+        <EditingProvider><Shell /></EditingProvider>
+      </StoreProvider>
+    </AccountProvider>
   );
 }
 
@@ -106,18 +114,28 @@ const ROUTES = [
   <Route key="log" path="/log" element={<Log />} />,
   <Route key="project" path="/project/:id" element={<ProjectScreen />} />,
   <Route key="area" path="/area/:id" element={<AreaScreen />} />,
+  <Route key="settings" path="/settings" element={<SettingsScreen />} />,
+  <Route key="settings-section" path="/settings/:section" element={<SettingsScreen />} />,
 ];
 
-/** Фокус в поле ввода — на iPhone это значит, что открыта клавиатура. */
-function useFieldFocused() {
-  const [on, setOn] = useState(() => isField(document.activeElement));
+/**
+ * Открыта ли экранная клавиатура (iPhone): видимая область заметно ниже окна.
+ * Фокус в поле не годится — на iOS поле может быть в фокусе без клавиатуры.
+ */
+function useKeyboardOpen() {
+  const calc = () => {
+    const vv = window.visualViewport;
+    return !!vv && window.innerHeight - vv.height > 150;
+  };
+  const [open, setOpen] = useState(calc);
   useEffect(() => {
-    const update = () => setTimeout(() => setOn(isField(document.activeElement)), 0);
-    document.addEventListener('focusin', update);
-    document.addEventListener('focusout', update);
-    return () => { document.removeEventListener('focusin', update); document.removeEventListener('focusout', update); };
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const on = () => setOpen(calc());
+    vv.addEventListener('resize', on);
+    return () => vv.removeEventListener('resize', on);
   }, []);
-  return on;
+  return open;
 }
 
 /** Задача, раскрытая сейчас в карточке (не новая). */
@@ -127,7 +145,7 @@ function useOpenTask() {
   return ed.editingId ? store.tasks.find((t) => t.id === ed.editingId) ?? null : null;
 }
 
-function Shell({ email }: { email: string }) {
+function Shell() {
   const phone = useIsPhone();
   const ed = useEditing();
   const openTask = useOpenTask();
@@ -146,7 +164,7 @@ function Shell({ email }: { email: string }) {
   if (phone) {
     return (
       <Routes>
-        <Route path="/" element={<div className="phone menu-bg"><PhoneMenu email={email} /><PhoneFab menu /></div>} />
+        <Route path="/" element={<div className="phone menu-bg"><PhoneMenu /><PhoneFab menu /></div>} />
         <Route path="*" element={<PhoneList><Routes>{routes}<Route path="*" element={<Navigate to="/" replace />} /></Routes></PhoneList>} />
       </Routes>
     );
@@ -154,7 +172,7 @@ function Shell({ email }: { email: string }) {
 
   return (
     <div className="app">
-      <Sidebar email={email} />
+      <Sidebar />
       <main className="panel">
         <div className="content" onMouseDown={(e) => { if (e.target === e.currentTarget) ed.select(null); }}>
           <Routes>
@@ -193,17 +211,20 @@ function PhoneList({ children }: { children: React.ReactNode }) {
   const loc = useLocation();
   const ed = useEditing();
   const openTask = useOpenTask();
-  const typing = useFieldFocused();
+  const typing = useKeyboardOpen();
+  // Настройки: серый фон с белыми карточками; из раздела настроек — назад в «Настройки».
+  const inSettings = loc.pathname.startsWith('/settings');
+  const settingsSub = /^\/settings\/[^/]+/.test(loc.pathname);
   return (
-    <div className="phone list-bg" key={loc.pathname}>
+    <div className={'phone ' + (inSettings ? 'menu-bg' : 'list-bg')} key={loc.pathname}>
       <div className="phone-list">
-        <Link to="/" className="phone-back">
-          <Icon name="back" size={20} color="#3E423C" width={2.2} />Меню
+        <Link to={settingsSub ? '/settings' : '/'} className="phone-back">
+          <Icon name="back" size={20} color="#3E423C" width={2.2} />{settingsSub ? 'Настройки' : 'Меню'}
         </Link>
         {children}
       </div>
-      {/* Пока открыта клавиатура (фокус в поле), панель скрыта — она не должна лежать поверх карточки. */}
-      {openTask ? !typing && <TaskActionBar task={openTask} floating /> : !ed.draft && <PhoneFab />}
+      {/* Панель видна, когда карточка открыта; прячется только пока на экране клавиатура. */}
+      {!inSettings && (openTask ? !typing && <TaskActionBar task={openTask} floating /> : !ed.draft && <PhoneFab />)}
     </div>
   );
 }

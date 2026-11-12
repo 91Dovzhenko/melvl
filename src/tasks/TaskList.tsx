@@ -84,7 +84,7 @@ export function TaskRow({ task, mode }: { task: Task; mode: RowMode }) {
   }
 
   return (
-    <div className={'row' + (selected ? ' selected' : '') + (phone ? ' row-phone' : '')}
+    <div className={'row' + (selected ? ' selected' : '') + (phone ? ' row-phone' : '') + (sub ? ' has-sub' : '')}
       onClick={() => (phone ? ed.open(task.id) : ed.select(task.id))}
       onDoubleClick={() => ed.open(task.id)}
       onContextMenu={(e) => {
@@ -97,14 +97,18 @@ export function TaskRow({ task, mode }: { task: Task; mode: RowMode }) {
       <Checkbox task={task} size={phone ? 'phone' : 'mac'} />
       {mode.logDate && <span className="log-date">{mode.logDate(task)}</span>}
       <div className="row-body" style={{ opacity: done && !mode.logDate ? 0.42 : 1 }}>
+        {/* Одна строка текста, как в Things: метка срока перед названием, название переносится,
+            иконки и оценка идут сразу за последним словом. */}
         <div className="row-line">
-          {chip}
+          {chip && <span className="lead">{chip}</span>}
           <span className="row-title">{task.title || <span className="muted">Без названия</span>}</span>
-          {task.notes.trim() && <Icon name="note" size={13} color="#8E9289" width={1.9} />}
-          {task.estimate_min !== null && <span className="est">{fmtMin(task.estimate_min)}</span>}
+          {task.notes.trim() && <span className="trail icon"><Icon name="note" size={13} color="#8E9289" width={1.9} /></span>}
+          {task.estimate_min !== null && <span className="trail"><span className="est">{fmtMin(task.estimate_min)}</span></span>}
           {skill && !phone && (
-            <span className={'skill-pill' + (mode.alwaysSkill ? '' : ' hover-only')}>
-              <SkillGlyph skill={skill} size={12} color="#3D6A00" />{skill.name}
+            <span className="trail">
+              <span className={'skill-pill' + (mode.alwaysSkill ? '' : ' hover-only')}>
+                <SkillGlyph skill={skill} size={12} color="#3D6A00" />{skill.name}
+              </span>
             </span>
           )}
         </div>

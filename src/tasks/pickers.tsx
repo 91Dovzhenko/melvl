@@ -2,8 +2,9 @@ import { useRef, useState } from 'react';
 import { useStore, useToday } from '../lib/store';
 import { addDays, fmtMin, parseISO } from '../lib/dates';
 import type { Skill, Task } from '../lib/types';
-import { Icon, ICONS, type IconName } from '../ui/icons';
+import { Icon, ICONS } from '../ui/icons';
 import { Pop, PopItem, PopSep, type Anchor } from '../ui/Pop';
+import { SKILL_ICONS } from '../ui/skillIcons';
 import { useIsPhone } from '../ui/useIsPhone';
 
 type When = Pick<Task, 'when_date' | 'when_evening' | 'someday'>;
@@ -129,7 +130,7 @@ export function EstimatePicker({ value, anchor, onPick, onClose }: {
 }
 
 export const skillIcon = (s: Pick<Skill, 'icon'> | undefined): string =>
-  (s && (ICONS as Record<string, string>)[s.icon]) || ICONS.skill;
+  (s && (SKILL_ICONS[s.icon] || (ICONS as Record<string, string>)[s.icon])) || ICONS.skill;
 
 function SkillGlyph({ skill, color = 'currentColor', size = 17 }: { skill: Skill; color?: string; size?: number }) {
   return (
@@ -155,9 +156,11 @@ export function SkillPicker({ value, inherited, forProject, anchor, onPick, onCl
   return (
     <Pop anchor={anchor} onClose={onClose} title={forProject ? 'Навык по умолчанию' : 'Навык'} width={280}>
       {inherited && !forProject ? (
-        <PopItem icon={(inherited.icon in ICONS ? inherited.icon : 'skill') as IconName}
-          label={<>Как у проекта <span style={{ color: '#B4B8B0', fontWeight: 600 }}>({inherited.name})</span></>}
-          selected={value === null} onClick={() => pick(null)} />
+        <button type="button" className={'pop-item' + (value === null ? ' selected' : '')} aria-pressed={value === null} onClick={() => pick(null)}>
+          <SkillGlyph skill={inherited} />
+          <span className="pop-label">Как у проекта <span style={{ color: '#B4B8B0', fontWeight: 600 }}>({inherited.name})</span></span>
+          {value === null && <Icon name="check" size={15} color="#C5F25A" width={2.4} />}
+        </button>
       ) : (
         <PopItem icon="clear" label="Без навыка" muted={value !== null} selected={value === null} onClick={() => pick(null)} />
       )}

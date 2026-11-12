@@ -18,6 +18,8 @@ type Store = Data & {
   /** Отменить последнее такое действие. false — отменять нечего. */
   undo(): boolean;
   toast: (msg: string, action?: ToastAction) => void;
+  /** Настройки аккаунта (одна строка на владельца; RLS ограничивает своей). */
+  patchSettings(changes: Partial<Settings>): void;
 };
 
 type ToastAction = { label: string; run: () => void };
@@ -205,8 +207,22 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
     }
   }, [toast, undo]);
 
-  const value = useMemo(() => ({ ...data, insert, patch, remove, withUndo, undo, toast }),
-    [data, insert, patch, remove, withUndo, undo, toast]);
+  const patchSettings = useCallback((changes: Partial<Settings>) => {
+    const prev = dataRef.current.settings;
+    setData((d) => ({ ...d, settings: { ...d.settings, ...changes } }));
+    if (supabase && !offline) {
+      supabase.from('settings').update(changes).not('owner', 'is', null).then(({ error }) => {
+        if (error) {
+          console.error(error);
+          setData((d) => ({ ...d, settings: prev }));
+          toast('Не сохранилось — проверьте связь');
+        }
+      });
+    }
+  }, [offline, toast]);
+
+  const value = useMemo(() => ({ ...data, insert, patch, remove, withUndo, undo, toast, patchSettings }),
+    [data, insert, patch, remove, withUndo, undo, toast, patchSettings]);
 
   return (
     <Ctx.Provider value={value}>

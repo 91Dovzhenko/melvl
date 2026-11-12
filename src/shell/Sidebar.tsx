@@ -4,7 +4,6 @@ import { Icon, Ring, type IconName } from '../ui/icons';
 import { useStore, useToday } from '../lib/store';
 import { counts, projectProgress, sortedAreas } from '../lib/views';
 import type { Project } from '../lib/types';
-import { signOut } from '../lib/session';
 
 export const SECTIONS: { path: string; label: string; icon: IconName; count?: 'inbox' | 'today' }[] = [
   { path: '/inbox', label: 'Входящие', icon: 'inbox', count: 'inbox' },
@@ -47,12 +46,12 @@ export function useCreateList() {
   };
 }
 
-export function Sidebar({ email }: { email: string }) {
+export function Sidebar() {
   const store = useStore();
   const today = useToday();
   const c = counts(store, today);
   const create = useCreateList();
-  const [menu, setMenu] = useState<'settings' | 'new' | null>(null);
+  const [menu, setMenu] = useState<'new' | null>(null);
   const projects = menuProjects(store.projects);
   const loose = projects.filter((p) => !p.area_id);
 
@@ -111,10 +110,10 @@ export function Sidebar({ email }: { email: string }) {
           <Icon name="plus" size={16} color="#3E423C" width={2} />
           Новый список
         </button>
-        <button type="button" className="foot-btn square" aria-label="Настройки" title="Настройки"
-          aria-expanded={menu === 'settings'} onClick={() => setMenu(menu === 'settings' ? null : 'settings')}>
+        {/* Шестерёнка открывает «Настройки» в рабочей панели; активна — лайм. */}
+        <NavLink to="/settings" className={({ isActive }) => 'foot-btn square' + (isActive ? ' active' : '')} aria-label="Настройки" title="Настройки">
           <Icon name="settings" size={16} color="#3E423C" />
-        </button>
+        </NavLink>
         {menu === 'new' && (
           <Popover onClose={() => setMenu(null)} style={{ bottom: 40, left: 0 }}>
             <button type="button" role="menuitem" onClick={() => { setMenu(null); create.project(); }}>
@@ -125,7 +124,6 @@ export function Sidebar({ email }: { email: string }) {
             </button>
           </Popover>
         )}
-        {menu === 'settings' && <SettingsPopover email={email} onClose={() => setMenu(null)} style={{ bottom: 40, right: 0 }} />}
       </div>
     </nav>
   );
@@ -162,19 +160,4 @@ export function Popover({ onClose, style, children }: { onClose: () => void; sty
     };
   }, [onClose]);
   return <div className="popover" ref={ref} role="menu" style={style}>{children}</div>;
-}
-
-/** Временное место «Выйти» — до экрана «Настройки» (п. 6.7, п. 4 сборки). */
-export function SettingsPopover({ email, onClose, style }: { email: string; onClose: () => void; style: React.CSSProperties }) {
-  return (
-    <Popover onClose={onClose} style={style}>
-      <div className="meta" title={email}>{email}</div>
-      <button type="button" role="menuitem" disabled>
-        <Icon name="settings" size={17} color="#8E9289" />Настройки — скоро
-      </button>
-      <button type="button" role="menuitem" onClick={() => { void signOut(); }}>
-        <Icon name="logout" size={17} color="#3E423C" />Выйти
-      </button>
-    </Popover>
-  );
 }

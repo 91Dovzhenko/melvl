@@ -4,14 +4,13 @@ import { Icon, Ring } from '../ui/icons';
 import { useStore, useToday } from '../lib/store';
 import { counts, projectProgress, sortedAreas } from '../lib/views';
 import type { Project } from '../lib/types';
-import { FUTURE, menuProjects, SECTIONS, SettingsPopover } from './Sidebar';
+import { FUTURE, menuProjects, SECTIONS } from './Sidebar';
 
 /** iPhone · Меню — отдельный экран. */
-export function PhoneMenu({ email }: { email: string }) {
+export function PhoneMenu() {
   const store = useStore();
   const today = useToday();
   const c = counts(store, today);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const projects = menuProjects(store.projects);
   const loose = projects.filter((p) => !p.area_id);
@@ -21,11 +20,9 @@ export function PhoneMenu({ email }: { email: string }) {
       <div className="phone-logo" style={{ position: 'relative' }}>
         <span className="logo-mark"><span /></span>
         <span className="logo-text">ME:LVL</span>
-        <button type="button" className="icon-btn44" aria-label="Настройки" aria-expanded={settingsOpen}
-          onClick={() => setSettingsOpen((v) => !v)}>
+        <Link to="/settings" className="icon-btn44" aria-label="Настройки">
           <Icon name="settings" size={22} color="#3E423C" />
-        </button>
-        {settingsOpen && <SettingsPopover email={email} onClose={() => setSettingsOpen(false)} style={{ top: 48, right: 0 }} />}
+        </Link>
       </div>
 
       <div className="phone-card">
