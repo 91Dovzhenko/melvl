@@ -2,10 +2,13 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { supabase } from './supabase';
 import { addDays, iso, todayISO } from './dates';
 import { repeatFirst, repeatNext, type RepeatRule } from './repeat';
-import type { Area, Project, Settings, Skill, TableName, Tables, Task } from './types';
+import type { Area, Goal, GoalMeasurement, GoalStep, Project, Settings, Skill, TableName, Tables, Task } from './types';
 
 export type Data = {
   areas: Area[]; projects: Project[]; tasks: Task[]; skills: Skill[];
+  goals: Goal[]; goal_steps: GoalStep[]; goal_measurements: GoalMeasurement[];
+  /** Удалённые копии привычек: в списках их нет, но в сводке главы они — «положено» (решение 13 нояб.). */
+  habitGhosts: Task[];
   rules: RepeatRule[];
   settings: Settings;
   loading: boolean;
@@ -45,7 +48,9 @@ export function useStore() {
   return s;
 }
 
-const DEFAULT_SETTINGS: Settings = { log_mode: 'manual', today_view: 'projects', last_auto_log: null };
+const DEFAULT_SETTINGS: Settings = { log_mode: 'manual', today_view: 'projects', last_auto_log: null, character_seen_at: null, tree_layout: null };
+const SETTINGS_COLS = 'log_mode,today_view,last_auto_log,character_seen_at,tree_layout';
+const TABLES = ['areas', 'projects', 'tasks', 'skills', 'goals', 'goal_steps', 'goal_measurements'] as const;
 
 const now = () => new Date().toISOString();
 
@@ -62,7 +67,19 @@ function defaults<T extends TableName>(table: T, row: Partial<Tables[T]>): Table
     someday: false, estimate_min: null, skill_id: null, deadline: null, status: 'open', completed_at: null,
     logged_at: null, today_order: Date.now() / 1000, repeat_template_id: null, repeat_date: null, is_template: false, is_habit: false, created_at: now(), ...row,
   } as Tables[T];
-  return { ...base, name: '', branch: 'creator', icon: '', active: true, ...row } as Tables[T];
+  if (table === 'goals') return {
+    ...base, title: '', metric: '', start_value: 0, target_value: 0, criterion: '', calc: 'once', period_n: 3,
+    period_unit: 'month', due_date: null, review_date: null, status: 'active', achieved_at: null, ...row,
+  } as Tables[T];
+  if (table === 'goal_steps') return {
+    ...base, goal_id: '', title: '', threshold: 0, calc: 'goal', taken_at: null, taken_manual: false, ...row,
+  } as Tables[T];
+  if (table === 'goal_measurements') {
+    // Дата замера — всегда из формы (локальный день); в базе значения по умолчанию нет.
+    const { sort_order: _s, ...rest } = base;
+    return { ...rest, goal_id: '', date: todayISO(), value: 0, comment: '', ...row } as Tables[T];
+  }
+  return { ...base, name: '', branch: 'creator', icon: '', active: true, created_at: now(), ...row } as Tables[T];
 }
 
 /**
@@ -72,7 +89,8 @@ function defaults<T extends TableName>(table: T, row: Partial<Tables[T]>): Table
  */
 export function StoreProvider({ children, offline, seed }: { children: React.ReactNode; offline?: boolean; seed?: Partial<Data> }) {
   const [data, setData] = useState<Data>({
-    areas: [], projects: [], tasks: [], skills: [], rules: [], settings: DEFAULT_SETTINGS, loading: !offline, ...seed,
+    areas: [], projects: [], tasks: [], skills: [], goals: [], goal_steps: [], goal_measurements: [], habitGhosts: [],
+    rules: [], settings: DEFAULT_SETTINGS, loading: !offline, ...seed,
   });
   const [toastMsg, setToastMsg] = useState<{ msg: string; action?: ToastAction } | null>(null);
   const recorder = useRef<UndoStep[] | null>(null);
@@ -94,22 +112,30 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
     // Копии повторов на сегодня (по дате устройства); расписание в базе делает то же в 00:05 по Москве.
     const gen = await supabase.rpc('generate_my_repeats', { p_today: todayISO() });
     if (gen.error) console.warn('generate_my_repeats', gen.error.message);
-    const [a, p, t, s, st, rr] = await Promise.all([
+    const [a, p, t, s, st, rr, g, gs, gm, hg] = await Promise.all([
       supabase.from('areas').select('*').is('deleted_at', null).order('sort_order'),
       supabase.from('projects').select('*').is('deleted_at', null).order('sort_order'),
       supabase.from('tasks').select('*').is('deleted_at', null).order('sort_order'),
       supabase.from('skills').select('*').is('deleted_at', null).order('sort_order'),
-      supabase.from('settings').select('log_mode,today_view,last_auto_log').maybeSingle(),
+      supabase.from('settings').select(SETTINGS_COLS).maybeSingle(),
       supabase.from('repeat_rules').select('task_id,kind,every,unit,weekdays,month_day,anchor_date,next_date,end_date,is_habit'),
+      supabase.from('goals').select('*').is('deleted_at', null).order('sort_order'),
+      supabase.from('goal_steps').select('*').is('deleted_at', null).order('sort_order'),
+      supabase.from('goal_measurements').select('*').is('deleted_at', null).order('date'),
+      supabase.from('tasks').select('*').eq('is_habit', true).not('repeat_template_id', 'is', null).not('deleted_at', 'is', null),
     ]);
-    const err = init.error || a.error || p.error || t.error || s.error || st.error;
+    const err = init.error || a.error || p.error || t.error || s.error || st.error || g.error || gs.error || gm.error;
     if (err) { toast('Не удалось загрузить данные'); console.error(err); }
     setData((d) => ({
       areas: (a.data as Area[]) ?? d.areas,
       projects: (p.data as Project[]) ?? d.projects,
       tasks: (t.data as Task[]) ?? d.tasks,
       skills: (s.data as Skill[]) ?? d.skills,
-      settings: (st.data as Settings) ?? d.settings,
+      goals: num(g.data as Goal[] | null, ['start_value', 'target_value']) ?? d.goals,
+      goal_steps: num(gs.data as GoalStep[] | null, ['threshold']) ?? d.goal_steps,
+      goal_measurements: num(gm.data as GoalMeasurement[] | null, ['value']) ?? d.goal_measurements,
+      habitGhosts: (hg.data as Task[]) ?? d.habitGhosts,
+      settings: (st.data as unknown as Settings) ?? d.settings,
       rules: (rr.data as RepeatRule[]) ?? d.rules,
       loading: false,
     }));
@@ -142,7 +168,7 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
       const uid = s.session?.user.id;
       if (!alive || !uid) return;
       channel = sb.channel('melvl-' + uid);
-      for (const table of ['areas', 'projects', 'tasks', 'skills', 'repeat_rules', 'settings'] as const) {
+      for (const table of [...TABLES, 'repeat_rules', 'settings'] as const) {
         channel.on('postgres_changes', { event: '*', schema: 'public', table, filter: `owner=eq.${uid}` },
           (e) => applyRemote(table, e.eventType, e.new as Record<string, unknown>, e.old as Record<string, unknown>));
       }
@@ -191,8 +217,8 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
   const applyRemote = (table: TableName | 'repeat_rules' | 'settings', type: string, row: Record<string, unknown>, old: Record<string, unknown>) => {
     if (table === 'settings') {
       if (type === 'DELETE' || pending.current.has('settings')) return;
-      const { log_mode, today_view, last_auto_log } = row as Settings;
-      setData((d) => ({ ...d, settings: { log_mode, today_view, last_auto_log } }));
+      const { log_mode, today_view, last_auto_log, character_seen_at, tree_layout } = row as Settings;
+      setData((d) => ({ ...d, settings: { log_mode, today_view, last_auto_log, character_seen_at, tree_layout } }));
       return;
     }
     if (table === 'repeat_rules') {
@@ -210,9 +236,15 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
       const rows = d[table] as { id: string }[];
       const rest = rows.filter((r) => r.id !== id);
       const gone = type === 'DELETE' || row.deleted_at;
+      if (table === 'tasks') {
+        const ghost = isHabitCopy(row) && !!row.deleted_at;
+        const ghosts = d.habitGhosts.filter((x) => x.id !== id);
+        d = { ...d, habitGhosts: ghost ? [...ghosts, row as unknown as Task] : ghosts };
+      }
       if (gone) return rest.length === rows.length ? d : { ...d, [table]: rest };
       const i = rows.findIndex((r) => r.id === id);
-      const next = i < 0 ? [...rows, row] : rows.map((r, j) => (j === i ? { ...r, ...row } : r));
+      const fixed = num([row as never], NUMERIC[table as TableName] ?? [])![0] as Record<string, unknown>;
+      const next = i < 0 ? [...rows, fixed] : rows.map((r, j) => (j === i ? { ...r, ...fixed } : r));
       return { ...d, [table]: next };
     });
   };
@@ -269,6 +301,9 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
     if (!prev) return;
     recorder.current?.push({ kind: 'remove', table, row: prev });
     setTable(table, (rows) => rows.filter((r) => r.id !== id));
+    if (table === 'tasks' && isHabitCopy(prev as never)) {
+      setData((d) => ({ ...d, habitGhosts: [...d.habitGhosts.filter((x) => x.id !== id), { ...(prev as Task), deleted_at: now() }] }));
+    }
     if (supabase && !offline) {
       track(id, supabase.from(table).update({ deleted_at: now() }).eq('id', id)).then(({ error }) => {
         if (error) {
@@ -290,6 +325,7 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
       } else if (step.kind === 'remove') {
         const row = { ...step.row, deleted_at: null };
         setTable(step.table, (rows) => (rows.some((r) => r.id === row.id) ? rows : [...rows, row as never]));
+        if (step.table === 'tasks') setData((d) => ({ ...d, habitGhosts: d.habitGhosts.filter((x) => x.id !== row.id) }));
         if (supabase && !offline) {
           track(row.id, supabase.from(step.table).update({ deleted_at: null }).eq('id', row.id)).then(({ error }) => {
             if (error) { console.error(error); toast('Не удалось вернуть — проверьте связь'); }
@@ -377,6 +413,27 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
       )}
     </Ctx.Provider>
   );
+}
+
+const isHabitCopy = (r: Record<string, unknown>) => !!r.is_habit && !!r.repeat_template_id && !r.is_template;
+
+/** Данные для расчётов роста: задачи вместе с удалёнными копиями привычек. */
+export function useGrowthData() {
+  const { tasks, projects, skills, habitGhosts } = useStore();
+  return useMemo(() => ({ tasks: habitGhosts.length ? [...tasks, ...habitGhosts] : tasks, projects, skills }), [tasks, projects, skills, habitGhosts]);
+}
+
+/** Postgres numeric приходит строкой — приводим к числу. */
+const NUMERIC: Partial<Record<TableName, string[]>> = {
+  goals: ['start_value', 'target_value'], goal_steps: ['threshold'], goal_measurements: ['value'],
+};
+function num<T>(rows: T[] | null, keys: string[]): T[] | null {
+  if (!rows || !keys.length) return rows;
+  return rows.map((r) => {
+    const o = { ...r } as Record<string, unknown>;
+    for (const k of keys) if (o[k] !== null && o[k] !== undefined) o[k] = Number(o[k]);
+    return o as T;
+  });
 }
 
 /** Хук «сегодня», который обновляется после полуночи. */
