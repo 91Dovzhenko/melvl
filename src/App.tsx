@@ -13,6 +13,10 @@ import { AreaScreen } from './screens/Area';
 import { Plans } from './screens/Plans';
 import { Log } from './screens/Log';
 import { SettingsScreen } from './screens/Settings';
+import { CharacterScreen } from './screens/Character';
+import { ChapterScreen, ChaptersScreen } from './screens/Chapters';
+import { GoalScreen, GoalsScreen } from './screens/Goals';
+import { MomentsProvider } from './growth/Moments';
 import { AccountProvider } from './lib/account';
 import { Sidebar, useCreateList } from './shell/Sidebar';
 import { PhoneMenu } from './shell/PhoneMenu';
@@ -33,7 +37,7 @@ export default function App() {
       {PREVIEW ? (
         <AccountProvider value={{ email: 'demo@example.com', name: 'Демо' }}>
           <StoreProvider offline seed={PREVIEW_SEED}>
-            <EditingProvider><Shell /></EditingProvider>
+            <EditingProvider><MomentsProvider><Shell /></MomentsProvider></EditingProvider>
           </StoreProvider>
         </AccountProvider>
       ) : <Gate />}
@@ -50,7 +54,7 @@ function Gate() {
   return (
     <AccountProvider value={{ email: u.email ?? '', name: meta.full_name || meta.name || '' }}>
       <StoreProvider>
-        <EditingProvider><Shell /></EditingProvider>
+        <EditingProvider><MomentsProvider><Shell /></MomentsProvider></EditingProvider>
       </StoreProvider>
     </AccountProvider>
   );
@@ -86,7 +90,8 @@ function useShortcuts() {
         if (store.undo()) e.preventDefault();
         return;
       }
-      if (isField(e.target) || ed.editingId || ed.draft) return;
+      // Открыто модальное окно (форма цели, замер, поздравление) — горячие клавиши задач не работают.
+      if (isField(e.target) || ed.editingId || ed.draft || document.querySelector('[aria-modal="true"]')) return;
       const plain = !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
       if (plain && (e.code === 'KeyN' || e.code === 'Space')) {
         e.preventDefault();
@@ -117,7 +122,16 @@ const ROUTES = [
   <Route key="area" path="/area/:id" element={<AreaScreen />} />,
   <Route key="settings" path="/settings" element={<SettingsScreen />} />,
   <Route key="settings-section" path="/settings/:section" element={<SettingsScreen />} />,
+  <Route key="character" path="/character" element={<CharacterScreen />} />,
+  <Route key="chapters" path="/chapters" element={<ChaptersScreen />} />,
+  <Route key="chapter" path="/chapters/:n" element={<ChapterScreen />} />,
+  <Route key="goals" path="/goals" element={<GoalsScreen />} />,
+  <Route key="goal" path="/goals/:id" element={<GoalScreen />} />,
 ];
+
+// Разделы роста — без панели задач внизу (как на холсте).
+const GROWTH_PAGE = /^\/(character|chapters|goals)(\/|$)/;
+
 
 /**
  * Открыта ли экранная клавиатура (iPhone): видимая область заметно ниже окна.
@@ -175,14 +189,14 @@ function Shell() {
     <div className="app">
       <Sidebar />
       <main className="panel">
-        <div className="content" onMouseDown={(e) => { if (e.target === e.currentTarget) ed.select(null); }}>
+        <div className={'content' + (/^\/(character|chapters|goals)(\/|$)/.test(loc.pathname) ? ' content-wide' : '')} onMouseDown={(e) => { if (e.target === e.currentTarget) ed.select(null); }}>
           <Routes>
             <Route path="/" element={<Navigate to="/today" replace />} />
             {routes}
             <Route path="*" element={<Navigate to="/today" replace />} />
           </Routes>
         </div>
-        <div className="toolbar">
+        {!GROWTH_PAGE.test(loc.pathname) && <div className="toolbar">
           {openTask ? <TaskActionBar task={openTask} /> : (
             <>
               <button type="button" className="tool" aria-label="Новая задача" title="Новая задача — N или пробел"
@@ -202,7 +216,7 @@ function Shell() {
               )}
             </>
           )}
-        </div>
+        </div>}
       </main>
     </div>
   );
@@ -216,16 +230,23 @@ function PhoneList({ children }: { children: React.ReactNode }) {
   // Настройки: серый фон с белыми карточками; из раздела настроек — назад в «Настройки».
   const inSettings = loc.pathname.startsWith('/settings');
   const settingsSub = /^\/settings\/[^/]+/.test(loc.pathname);
+  // Разделы роста: своя стрелка назад и свои кнопки (у целей — «+» и «Замер»), без «+» задачи.
+  const growth = GROWTH_PAGE.test(loc.pathname);
+  const back = settingsSub ? { to: '/settings', label: 'Настройки' }
+    : /^\/chapters\/[^/]+/.test(loc.pathname) ? { to: '/chapters', label: 'Главы' }
+    : loc.pathname.startsWith('/chapters') ? { to: '/character', label: 'Персонаж' }
+    : /^\/goals\/[^/]+/.test(loc.pathname) ? { to: '/goals', label: 'Цели' }
+    : { to: '/', label: 'Меню' };
   return (
     <div className={'phone ' + (inSettings ? 'menu-bg' : 'list-bg')} key={loc.pathname}>
       <div className="phone-list">
-        <Link to={settingsSub ? '/settings' : '/'} className="phone-back">
-          <Icon name="back" size={20} color="#3E423C" width={2.2} />{settingsSub ? 'Настройки' : 'Меню'}
+        <Link to={back.to} className="phone-back">
+          <Icon name="back" size={20} color="#3E423C" width={2.2} />{back.label}
         </Link>
         {children}
       </div>
       {/* Панель видна, когда карточка открыта; прячется только пока на экране клавиатура. */}
-      {!inSettings && (openTask ? !typing && <TaskActionBar task={openTask} floating /> : !ed.draft && <PhoneFab />)}
+      {!inSettings && !growth && (openTask ? !typing && <TaskActionBar task={openTask} floating /> : !ed.draft && <PhoneFab />)}
       {ed.draft && <PhoneNewTask />}
     </div>
   );

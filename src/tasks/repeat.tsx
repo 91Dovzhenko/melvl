@@ -6,7 +6,8 @@ import { describe, upcoming, type RepeatKind, type RepeatRule, type RepeatUnit }
 import type { Task } from '../lib/types';
 import { Icon } from '../ui/icons';
 import { Pop, PopItem } from '../ui/Pop';
-import { WhenPicker } from './pickers';
+import { DatePicker } from '../ui/DatePicker';
+import { Select } from '../ui/Select';
 import { useIsPhone } from '../ui/useIsPhone';
 
 const TABS: { kind: RepeatKind; label: string; short: string }[] = [
@@ -89,15 +90,11 @@ export function RepeatDialog({ task, onClose }: { task: Task; onClose: () => voi
   const numInput = (label: string) => (
     <input className="rep-num" inputMode="numeric" value={every} aria-label={label} onChange={(e) => setEvery(e.target.value.replace(/\D/g, ''))} />
   );
-  const unitDrop = (
-    <button type="button" className="rep-drop" onClick={(e) => setPop({ kind: 'unit', anchor: e.currentTarget })}>
-      {UNITS.find((u) => u.value === unit)!.label}{chev}
-    </button>
-  );
+  // Общий выпадающий список (Спецификация, раздел 12) — единица и число месяца.
+  const unitDrop = <Select compact={!phone} label="Единица" value={unit} width={phone ? 140 : 130} onChange={setUnit} options={UNITS} />;
   const mdayDrop = (
-    <button type="button" className="rep-drop" onClick={(e) => setPop({ kind: 'mday', anchor: e.currentTarget })}>
-      {monthDay}-го числа{chev}
-    </button>
+    <Select compact={!phone} label="Число месяца" value={String(monthDay)} width={phone ? 150 : 140} onChange={(v) => setMonthDay(Number(v))}
+      options={Array.from({ length: 31 }, (_, i) => ({ value: String(i + 1), label: `${i + 1}-го числа` }))} />
   );
   const days = kind === 'weekly' && (
     <div className="rep-days">
@@ -125,7 +122,7 @@ export function RepeatDialog({ task, onClose }: { task: Task; onClose: () => voi
     <div className="rep-habit">
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
         <span id="rep-habit-label" className="rep-habit-t">Это привычка</span>
-        <span className="rep-habit-s">Учитывается в регулярности привычек на витрине</span>
+        <span className="rep-habit-s">Учитывается в привычках в сводке главы</span>
       </div>
       <button type="button" role="switch" aria-checked={habit} aria-labelledby="rep-habit-label"
         className={'switch' + (habit ? ' on' : '')} onClick={() => setHabit((h) => !h)}><span /></button>
@@ -133,24 +130,10 @@ export function RepeatDialog({ task, onClose }: { task: Task; onClose: () => voi
   );
   const pops = (
     <>
-      {pop?.kind === 'unit' && (
-        <Pop anchor={pop.anchor} onClose={() => setPop(null)} variant="light" width={180} title="Единица">
-          {UNITS.map((u) => <PopItem key={u.value} label={u.label} selected={u.value === unit} onClick={() => { setUnit(u.value); setPop(null); }} />)}
-        </Pop>
-      )}
-      {pop?.kind === 'mday' && (
-        <Pop anchor={pop.anchor} onClose={() => setPop(null)} variant="light" width={240} title="Число месяца">
-          <div className="mday-grid">
-            {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
-              <button key={d} type="button" className={'mday' + (d === monthDay ? ' on' : '')} onClick={() => { setMonthDay(d); setPop(null); }}>{d}</button>
-            ))}
-          </div>
-        </Pop>
-      )}
       {(pop?.kind === 'start' || pop?.kind === 'endDate') && (
-        <WhenPicker anchor={pop.anchor} onClose={() => setPop(null)} dateOnly
-          value={{ when_date: pop.kind === 'start' ? start : end, when_evening: false, someday: false }}
-          onPick={(v) => { if (!v.when_date) return; if (pop.kind === 'start') setStart(v.when_date); else setEnd(v.when_date); }} />
+        <DatePicker anchor={pop.anchor} onClose={() => setPop(null)} title={pop.kind === 'start' ? (kind === 'after_completion' ? 'Первый раз' : 'Следующий раз') : 'Окончание'}
+          value={pop.kind === 'start' ? start : end ?? start}
+          onPick={(d) => { if (!d) return; if (pop.kind === 'start') setStart(d); else setEnd(d); }} />
       )}
       {pop?.kind === 'end' && (
         <Pop anchor={pop.anchor} onClose={() => setPop(null)} variant="light" width={200} title="Окончание">
@@ -230,7 +213,10 @@ export function RepeatDialog({ task, onClose }: { task: Task; onClose: () => voi
           </div>
           <div className="rep-line ruled">
             <span className="rep-cap">Окончание</span>
-            <button type="button" className="rep-drop" onClick={(e) => setPop({ kind: 'end', anchor: e.currentTarget })}>{endLabel}{chev}</button>
+            <Select compact label="Окончание" value={end ? 'date' : 'never'} width={140}
+              onChange={(v) => setEnd(v === 'never' ? null : end ?? addDays(start, 30))}
+              options={[{ value: 'never', label: 'никогда' }, { value: 'date', label: 'в дату' }]} />
+            {end && <button type="button" className="rep-drop" onClick={(e) => setPop({ kind: 'endDate', anchor: e.currentTarget })}>{endLabel}{chev}</button>}
           </div>
         </div>
 

@@ -1,7 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, NavLink, useParams } from 'react-router-dom';
-import { useStore } from '../lib/store';
+import { useGrowthData, useStore } from '../lib/store';
+import { skillDeletionPreview } from '../lib/growth/growth';
+import { branchName } from '../lib/growth/format';
+import { Select } from '../ui/Select';
 import { useAccount } from '../lib/account';
 import { signOut } from '../lib/session';
 import type { Settings, Skill } from '../lib/types';
@@ -9,8 +12,10 @@ import { useNewTaskContext } from '../tasks/editing';
 import { SkillGlyph } from '../tasks/pickers';
 import { Icon } from '../ui/icons';
 import { Pop, PopItem, PopSep, type Anchor } from '../ui/Pop';
-import { SKILL_ICON_GROUPS, SKILL_ICON_LABEL } from '../ui/skillIcons';
+import { SKILL_ICON_GROUPS, SKILL_ICON_LABEL, SKILL_ICONS } from '../ui/skillIcons';
 import { useIsPhone } from '../ui/useIsPhone';
+import { LEVEL_TABLE_ROWS, levelTable, type LevelKind } from '../lib/growth/levels';
+import { fmtMin } from '../lib/dates';
 
 const D = {
   account: 'M8 8a4 4 0 1 0 8 0a4 4 0 1 0 -8 0 M4.5 20a7.5 7.5 0 0 1 15 0',
@@ -18,7 +23,6 @@ const D = {
   today: 'M8 12a4 4 0 1 0 8 0a4 4 0 1 0 -8 0 M12 2.5v2.2 M12 19.3v2.2 M2.5 12h2.2 M19.3 12h2.2 M5.3 5.3l1.6 1.6 M17.1 17.1l1.6 1.6 M5.3 18.7l1.6-1.6 M17.1 6.9l1.6-1.6',
   skills: 'M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z',
   about: 'M12 21a9 9 0 1 0 0-18a9 9 0 0 0 0 18z M12 11v5 M12 7.5h.01',
-  showcase: 'M4 20h16 M5 15.5l4.5-4.5l3.5 3.5L19.5 8 M15 8h4.5v4.5',
   calendars: 'M7 5h10a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V8a3 3 0 0 1 3-3z M4 10h16 M8 3v4 M16 3v4',
   claude: 'M5 5h14v11H10l-5 4z M9 10h6',
   time: 'M4 12a8 8 0 1 0 16 0a8 8 0 1 0 -16 0 M12 7.5V12l3 2',
@@ -35,7 +39,6 @@ const SECTIONS = [
 type SectionKey = typeof SECTIONS[number]['key'];
 
 const LATER = [
-  { label: 'Витрина', stage: 'этап 2', d: D.showcase },
   { label: 'Календари', stage: 'этап 3', d: D.calendars },
   { label: 'Claude', stage: 'этап 4', d: D.claude },
   { label: 'Время', stage: 'этап 5', d: D.time },
@@ -147,12 +150,12 @@ export function SettingsScreen() {
   );
 }
 
-function Head({ title, sub }: { title: string; sub?: string }) {
+function Head({ title, sub, extra }: { title: string; sub?: string; extra?: React.ReactNode }) {
   const phone = useIsPhone();
-  if (phone) return sub ? <p className="set-sub" style={{ margin: '0 4px' }}>{sub}</p> : null;
+  if (phone) return sub ? <p className="set-sub" style={{ margin: '0 4px', display: 'flex', alignItems: 'center', gap: 8 }}>{sub}{extra}</p> : null;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <h2 className="set-h2">{title}</h2>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><h2 className="set-h2">{title}</h2>{extra}</span>
       {sub && <p className="set-sub">{sub}</p>}
     </div>
   );
@@ -261,6 +264,7 @@ function SkillsSection() {
   const [menu, setMenu] = useState<{ skill: Skill; anchor: Anchor } | null>(null);
   const [icons, setIcons] = useState<{ skill: Skill | null; anchor: Anchor; onPick: (key: string) => void } | null>(null);
   const [deleting, setDeleting] = useState<Skill | null>(null);
+  const [levels, setLevels] = useState(false);
   const skills = store.skills.filter((s) => !s.deleted_at).sort((a, b) => a.sort_order - b.sort_order);
 
   const move = (s: Skill, dir: -1 | 1) => {
@@ -274,7 +278,8 @@ function SkillsSection() {
 
   return (
     <>
-      <Head title="Навыки" sub="Из этого списка навык выбирается у задачи и проекта" />
+      <Head title="Навыки" sub="Из этого списка навык выбирается у задачи и проекта"
+        extra={<button type="button" className={'info-i lg' + (levels ? ' on' : '')} aria-label="Как растут уровни" title="Как растут уровни" onClick={() => setLevels(true)}>i</button>} />
       {BRANCHES.map((b) => {
         const list = skills.filter((s) => s.branch === b.key);
         return (
@@ -332,6 +337,7 @@ function SkillsSection() {
           onPick={(key) => { icons.onPick(key); setIcons(null); }} />
       )}
       {deleting && <DeleteSkillDialog skill={deleting} onClose={() => setDeleting(null)} />}
+      {levels && <LevelsDialog onClose={() => setLevels(false)} />}
     </>
   );
 }
@@ -453,16 +459,30 @@ function DeleteSkillDialog({ skill, onClose }: { skill: Skill; onClose: () => vo
   const others = store.skills.filter((s) => s.id !== skill.id && !s.deleted_at)
     .sort((a, b) => (a.branch === skill.branch ? 0 : 1) - (b.branch === skill.branch ? 0 : 1) || a.sort_order - b.sort_order);
   const [mode, setMode] = useState<'move' | 'none'>(others.length ? 'move' : 'none');
-  const [target, setTarget] = useState<Skill | undefined>(others[0]);
-  const [pick, setPick] = useState<HTMLElement | null>(null);
+  const [targetId, setTargetId] = useState<string | undefined>(others[0]?.id);
+  const target = others.find((x) => x.id === targetId);
+  const growth = useGrowthData();
+  // Куда уйдут часы — до подтверждения (15_ТЗ, п. 4.7): тот же расчёт, что применится при удалении.
+  const preview = useMemo(() => skillDeletionPreview(growth, skill.id, mode === 'move' && target ? { kind: 'transfer', to: target.id } : { kind: 'keep' }),
+    [growth, skill.id, mode, target]);
+  const hours = preview.minutes;
+  const nameOf = (id: string) => store.skills.find((x) => x.id === id)?.name ?? '';
+  const ownProjects = projects.map((p) => `«${p.name || 'Новый проект'}»`);
+  // Почему часы пропадут: задачи без проекта и/или проекты, у которых удаляемый навык — навык проекта.
+  const loose = tasks.some((t) => !t.project_id || !store.projects.find((p) => p.id === t.project_id)?.default_skill_id);
+  const lostWhy = [
+    loose ? 'Задачи без проекта (и в проектах без своего навыка) остаются без навыка.' : '',
+    ownProjects.length ? `${ownProjects.length > 1 ? 'Проекты' : 'Проект'} ${ownProjects.join(', ')}: «${skill.name}» — ${ownProjects.length > 1 ? 'их' : 'его'} навык проекта, он тоже снимется.` : '',
+  ].filter(Boolean).join(' ');
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !pick) { e.stopPropagation(); onClose(); } };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [onClose, pick]);
+  }, [onClose]);
 
   const run = () => {
+    // Тот же патч, что в расчёте окна: у задач и проектов навык переносится или снимается.
     const to = mode === 'move' && target ? target.id : null;
     store.withUndo('Навык удалён', () => {
       for (const t of tasks) store.patch('tasks', t.id, { skill_id: to });
@@ -487,18 +507,21 @@ function DeleteSkillDialog({ skill, onClose }: { skill: Skill; onClose: () => vo
         </div>
         {used ? (
           <>
-            <p>Навык «{skill.name}» стоит у {usage}. {tasks.length + projects.length > 1 ? 'Что с ними сделать?' : tasks.length ? 'Что с ней сделать?' : 'Что с ним сделать?'}</p>
+            <p>Навык «{skill.name}» стоит у {usage}{hours > 0 ? `, на нём ${fmtMin(hours)}` : ''}. {tasks.length + projects.length > 1 ? 'Что с ними сделать?' : tasks.length ? 'Что с ней сделать?' : 'Что с ним сделать?'}</p>
             <div role="radiogroup" aria-label="Что сделать с задачами" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <div className={'opt-card' + (mode === 'move' ? ' on' : '')} role="radio" aria-checked={mode === 'move'} tabIndex={0}
                 onClick={() => others.length && setMode('move')} aria-disabled={!others.length}>
                 <span className="opt-dot" />
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  <span className="set-label">Перенести в другой навык</span>
+                  <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <span className="set-label">Перенести в другой навык</span>
+                    {hours > 0 && <span className="set-sub" style={{ fontSize: 12 }}>{fmtMin(hours)} перейдут в выбранный навык и его ветку</span>}
+                  </span>
                   {mode === 'move' && target && (
-                    <button type="button" className="skill-select" aria-haspopup="listbox" onClick={(e) => { e.stopPropagation(); setPick(e.currentTarget); }}>
-                      <SkillGlyph skill={target} size={15} color="#3D6A00" />{target.name}
-                      <Icon name="chevronDown" size={14} color="#5F635C" width={2.2} />
-                    </button>
+                    <span onClick={(e) => e.stopPropagation()} style={{ alignSelf: 'flex-start' }}>
+                      <Select label="Перенести в навык" value={target.id} width={220} onChange={setTargetId}
+                        options={others.map((x) => ({ value: x.id, label: x.name, icon: SKILL_ICONS[x.icon] || SKILL_ICONS.target, hint: x.active ? undefined : 'скрыт' }))} />
+                    </span>
                   )}
                 </div>
               </div>
@@ -507,6 +530,32 @@ function DeleteSkillDialog({ skill, onClose }: { skill: Skill; onClose: () => vo
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
                   <span className="set-label">Оставить без навыка</span>
                   <span className="set-sub" style={{ fontSize: 12 }}>Задачи в проектах снова возьмут навык проекта</span>
+                  {mode === 'none' && hours > 0 && (
+                    <div role="note" className="del-warn">
+                      <Icon name="warn" size={16} color="#8A5A00" width={2.2} />
+                      <div className="body">
+                        <span style={{ fontWeight: 700 }}>Куда уйдут {fmtMin(hours)} навыка «{skill.name}»:</span>
+                        <span className="rows">
+                          {preview.moved.map((m) => (
+                            <span key={m.skillId} className="kv"><span>«{nameOf(m.skillId)}» получит — навык проектов</span><b>{fmtMin(m.minutes)}</b></span>
+                          ))}
+                          {preview.lost > 0 && <span className="kv"><span>Больше не будут считаться</span><b>{fmtMin(preview.lost)}</b></span>}
+                          {preview.lost > 0 && (
+                            <span className="why">{lostWhy}</span>
+                          )}
+                        </span>
+                        {(preview.total.from !== preview.total.to || preview.branches.length > 0) && (
+                          <>
+                            <span className="lv">
+                              {preview.total.from !== preview.total.to && <span>Общий уровень: <b>{preview.total.from} → {preview.total.to}</b></span>}
+                              {preview.branches.map((b) => <span key={b.key}>Ветка «{branchName(b.key)}»: <b>{b.from} → {b.to}</b></span>)}
+                            </span>
+                            <span style={{ fontWeight: 600 }}>Уровни изменятся тихо, без уведомлений.</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -521,17 +570,54 @@ function DeleteSkillDialog({ skill, onClose }: { skill: Skill; onClose: () => vo
             <button type="button" className="btn-quiet" style={{ padding: '0 18px', height: 40 }} onClick={run}>Удалить</button>
           </div>
         </div>
-        {pick && (
-          <Pop anchor={pick} onClose={() => setPick(null)} variant="light" width={240} title="Перенести в">
-            {others.map((s) => (
-              <button key={s.id} type="button" className={'pop-item' + (target?.id === s.id ? ' selected' : '')}
-                onClick={() => { setTarget(s); setPick(null); }}>
-                <SkillGlyph skill={s} size={15} color="#3D6A00" /><span className="pop-label">{s.name}</span>
-                {!s.active && <span className="pop-hint">скрыт</span>}
-              </button>
-            ))}
-          </Pop>
-        )}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+/** Окно «Как растут уровни» (Спецификация, раздел 13): три таблицы из тех же формул, что и уровни, — уровни 2–16 и 50. */
+function LevelsDialog({ onClose }: { onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [onClose]);
+  const tables: { kind: LevelKind; title: string; rule: string }[] = [
+    { kind: 'skill', title: 'Навык', rule: 'переход с уровня n — 3 × √n ч' },
+    { kind: 'branch', title: 'Ветка', rule: 'переход с уровня n — 6 + n ч' },
+    { kind: 'total', title: 'Общий уровень', rule: 'переход с уровня n — 12 + 1,5 × n ч' },
+  ];
+  return createPortal(
+    <div className="modal-scrim" data-keep-card onClick={onClose}>
+      <div className="modal lv-modal" role="dialog" aria-modal="true" aria-labelledby="lv-t" onClick={(e) => e.stopPropagation()}>
+        <div className="lv-head">
+          <h2 id="lv-t">Как растут уровни</h2>
+          <button type="button" className="lv-x" aria-label="Закрыть" onClick={onClose}><Icon name="clear" size={14} color="#3E423C" width={2.2} /></button>
+        </div>
+        <div className="lv-text">
+          <span>Часы — это оценки выполненных задач. Задача без навыка часов не даёт.</span>
+          <span><b>Навык</b> растёт от своих часов, <b>ветка</b> — от суммы часов её навыков, <b>общий уровень</b> — от часов всех навыков. Каждый следующий уровень стоит чуть дороже.</span>
+          <span className="q">Формулы стартовые — их калибруют по факту. При смене формулы уровни пересчитываются сами и тихо, без поздравлений.</span>
+        </div>
+        <div className="lv-grid">
+          {tables.map((t) => {
+            const rows = levelTable(t.kind, LEVEL_TABLE_ROWS);
+            return (
+              <section key={t.kind} className="lv-table">
+                <h3>{t.title}</h3>
+                <span className="rule">{t.rule}</span>
+                <div className="lv-row head"><span>Уровень</span><span className="r">Переход</span><span className="r">Всего</span></div>
+                {rows.map((r) => (
+                  <div key={r.level} className={'lv-row' + (r.level === 50 ? ' fifty' : '')}>
+                    <span className="l">{r.level}</span><span className="r s">{fmtMin(r.step)}</span><span className="r t">{fmtMin(r.total)}</span>
+                  </div>
+                ))}
+              </section>
+            );
+          })}
+        </div>
+        <span className="lv-foot">«Переход» — сколько часов стоит взять этот уровень с предыдущего; «Всего» — сколько часов нужно с нуля. Строка «50» — для ориентира.</span>
       </div>
     </div>,
     document.body,

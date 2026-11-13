@@ -4,7 +4,7 @@ import { Icon, Ring } from '../ui/icons';
 import { useStore, useToday } from '../lib/store';
 import { counts, projectProgress, sortedAreas } from '../lib/views';
 import type { Project } from '../lib/types';
-import { FUTURE, menuProjects, SECTIONS } from './Sidebar';
+import { FUTURE, GROWTH, menuProjects, SECTIONS, useCharacterDot } from './Sidebar';
 
 /** iPhone · Меню — отдельный экран. */
 export function PhoneMenu() {
@@ -14,6 +14,7 @@ export function PhoneMenu() {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const projects = menuProjects(store.projects);
   const loose = projects.filter((p) => !p.area_id);
+  const dot = useCharacterDot();
 
   return (
     <nav className="phone-menu" aria-label="Разделы">
@@ -39,6 +40,13 @@ export function PhoneMenu() {
       </div>
 
       <div className="phone-card">
+        {GROWTH.map((g) => (
+          <Link key={g.path} to={g.path} className="phone-row">
+            <Icon name={g.icon} size={22} />
+            <span className="label">{g.label}</span>
+            {g.dot && dot && <span className="badge-dot phone" role="img" aria-label="Новый уровень" />}
+          </Link>
+        ))}
         {FUTURE.map((f) => (
           <div key={f.label} className="phone-row future" aria-disabled="true">
             <Icon name={f.icon} size={22} color="#8E9289" />

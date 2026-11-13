@@ -16,7 +16,7 @@ export type RepeatRule = {
   anchor_date: string | null;
   next_date: string | null;
   end_date: string | null;
-  /** «Это привычка» — учитывается в регулярности привычек на витрине. */
+  /** «Это привычка» — учитывается в привычках в сводке главы. */
   is_habit: boolean;
 };
 

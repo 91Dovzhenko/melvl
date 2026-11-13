@@ -10,7 +10,7 @@ import { describe } from '../lib/repeat';
 import type { Task } from '../lib/types';
 import { useEditing } from './editing';
 import { useIsPhone } from '../ui/useIsPhone';
-import { completeFields } from '../lib/logbook';
+import { useTaskToggle } from '../growth/Moments';
 
 export type RowMode = {
   /** Показывать проект под задачей. */
@@ -49,17 +49,15 @@ function Checkbox({ task, size }: { task: Task; size: 'mac' | 'phone' }) {
 }
 
 function CheckboxInner({ task, size }: { task: Task; size: 'mac' | 'phone' }) {
-  const { patch, settings } = useStore();
+  const toggle = useTaskToggle();
   const done = task.status === 'completed';
   return (
     <button type="button" className={'cb' + (done ? ' done' : '') + (task.someday ? ' dashed' : '') + (size === 'phone' ? ' cb-phone' : '')}
       aria-label={(done ? 'Снять отметку: ' : 'Выполнить: ') + (task.title || 'задача')}
       onClick={(e) => {
         e.stopPropagation();
-        // Снять отметку — задача возвращается в работу (и из Журнала тоже).
-        patch('tasks', task.id, done
-          ? { status: 'open', completed_at: null, logged_at: null }
-          : completeFields(settings.log_mode));
+        // Отметка — с моментами роста; снять отметку — задача возвращается в работу (и из Журнала тоже), уровни тихо откатываются.
+        toggle(task);
       }}>
       {done && (
         <svg width={size === 'phone' ? 13 : 10} height={size === 'phone' ? 13 : 10} viewBox="0 0 12 12" fill="none" aria-hidden="true">

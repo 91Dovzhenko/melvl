@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Icon, Ring, type IconName } from '../ui/icons';
 import { useStore, useToday } from '../lib/store';
 import { counts, projectProgress, sortedAreas } from '../lib/views';
 import type { Project } from '../lib/types';
+import { badgeOn } from '../lib/growth/growth';
 
 export const SECTIONS: { path: string; label: string; icon: IconName; count?: 'inbox' | 'today' }[] = [
   { path: '/inbox', label: 'Входящие', icon: 'inbox', count: 'inbox' },
@@ -12,10 +13,22 @@ export const SECTIONS: { path: string; label: string; icon: IconName; count?: 'i
   { path: '/log', label: 'Журнал', icon: 'log' },
 ];
 
+/** Разделы роста: «Персонаж» (точка-бейдж) и «Цели»; «Время» — скоро. */
+export const GROWTH: { path: string; label: string; icon: IconName; dot?: boolean }[] = [
+  { path: '/character', label: 'Персонаж', icon: 'character', dot: true },
+  { path: '/goals', label: 'Цели', icon: 'goal' },
+];
 export const FUTURE: { label: string; icon: IconName }[] = [
-  { label: 'Витрина', icon: 'showcase' },
   { label: 'Время', icon: 'time' },
 ];
+
+/** Точка-бейдж на «Персонаже»: вырос уровень после последнего открытия раздела. */
+export function useCharacterDot() {
+  const store = useStore();
+  const { tasks, projects, skills, settings } = store;
+  return useMemo(() => badgeOn({ tasks, projects, skills }, settings.character_seen_at),
+    [tasks, projects, skills, settings.character_seen_at]);
+}
 
 /** Проекты, видимые в меню: открытые и завершённые до переноса в Журнал. */
 export const menuProjects = (projects: Project[]) =>
@@ -54,6 +67,7 @@ export function Sidebar() {
   const [menu, setMenu] = useState<'new' | null>(null);
   const projects = menuProjects(store.projects);
   const loose = projects.filter((p) => !p.area_id);
+  const dot = useCharacterDot();
 
   return (
     <nav className="sidebar" aria-label="Разделы">
@@ -76,6 +90,13 @@ export function Sidebar() {
       </div>
 
       <div className="nav-group">
+        {GROWTH.map((g) => (
+          <NavLink key={g.path} to={g.path} className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
+            <Icon name={g.icon} size={18} />
+            <span className="label">{g.label}</span>
+            {g.dot && dot && <span className="badge-dot" role="img" aria-label="Новый уровень" />}
+          </NavLink>
+        ))}
         {FUTURE.map((f) => (
           <button key={f.label} type="button" className="nav-item future" disabled aria-disabled="true">
             <Icon name={f.icon} size={18} color="#8E9289" />
