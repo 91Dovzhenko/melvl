@@ -12,6 +12,7 @@ import { useEditing } from './editing';
 import { useIsPhone } from '../ui/useIsPhone';
 import { hasLink, LinkText } from '../ui/LinkText';
 import { isNewTask } from '../lib/newTasks';
+import { useDndList, useDragSource, type ListSpec } from './dnd';
 import { useTaskToggle } from '../growth/Moments';
 
 export type RowMode = {
@@ -28,20 +29,31 @@ export type RowMode = {
 };
 
 /** Список задач с выделением, раскрытием карточки и местом для новой задачи. */
-export function TaskList({ tasks, mode = {}, draftHere = false }: { tasks: Task[]; mode?: RowMode; draftHere?: boolean }) {
+/** Перетаскивание в списке (только Mac, 19_ТЗ): id списка, где можно поставить и что сделать. */
+export type ListDrag = { id: string; resolve: ListSpec['resolve']; drop: ListSpec['drop'] };
+
+const noDrag: ListDrag = { id: '', resolve: () => null, drop: () => {} };
+
+export function TaskList({ tasks, mode = {}, draftHere = false, drag }: { tasks: Task[]; mode?: RowMode; draftHere?: boolean; drag?: ListDrag }) {
   const ed = useEditing();
   const phoneLayout = useIsPhone();
+  const d = drag ?? noDrag;
+  const dnd = useDndList(d.id, { kind: 'task', ids: tasks.map((t) => t.id), resolve: d.resolve, drop: d.drop }, !!drag && !phoneLayout);
   // На iPhone новая задача — карточкой сверху экрана (PhoneNewTask), не в списке.
   if (phoneLayout) draftHere = false;
   const draftAfter = ed.draft?.afterId ?? null;
   const items: React.ReactNode[] = [];
   if (ed.draft && draftHere && draftAfter === null && tasks.length === 0) items.push(<TaskCard key="draft" />);
-  tasks.forEach((t, i) => {
-    items.push(ed.editingId === t.id ? <TaskCard key={t.id} task={t} /> : <TaskRow key={t.id} task={t} mode={mode} />);
+  // Пока тянут: исходной строки нет, на месте — плашка.
+  const shown = dnd.hidden ? tasks.filter((t) => t.id !== dnd.hidden) : tasks;
+  shown.forEach((t, i) => {
+    if (dnd.slot === i) items.push(<div key="dnd-slot" className="dnd-slot" data-dnd-slot aria-hidden="true" />);
+    items.push(ed.editingId === t.id ? <TaskCard key={t.id} task={t} /> : <TaskRow key={t.id} task={t} mode={mode} dragList={drag ? d.id : undefined} />);
     if (ed.draft && draftAfter === t.id && !phoneLayout) items.push(<TaskCard key="draft" />);
     if (ed.draft && draftHere && draftAfter === null && i === tasks.length - 1) items.push(<TaskCard key="draft" />);
   });
-  return <div className="task-list">{items}</div>;
+  if (dnd.slot !== null && dnd.slot >= shown.length) items.push(<div key="dnd-slot" className="dnd-slot" data-dnd-slot aria-hidden="true" />);
+  return <div className="task-list" ref={dnd.ref as React.RefObject<HTMLDivElement>} data-dnd-list={drag ? d.id : undefined}>{items}</div>;
 }
 
 function Checkbox({ task, size }: { task: Task; size: 'mac' | 'phone' }) {
@@ -89,7 +101,7 @@ function TodaySquare({ size = 18 }: { size?: number }) {
   );
 }
 
-export function TaskRow({ task, mode }: { task: Task; mode: RowMode }) {
+export function TaskRow({ task, mode, dragList }: { task: Task; mode: RowMode; dragList?: string }) {
   const store = useStore();
   const ed = useEditing();
   const today = useToday();
@@ -99,6 +111,8 @@ export function TaskRow({ task, mode }: { task: Task; mode: RowMode }) {
   const sub = mode.showProject ? projectName(store, task.project_id) : '';
   const skill = skillOf(store, task).skill;
   const [menuAt, setMenuAt] = useState<{ x: number; y: number } | null>(null);
+  // Тянуть можно открытые задачи (выполненные — нет), только на Mac и только в списке с перетаскиванием.
+  const startDrag = useDragSource(dragList && task.status === 'open' ? { kind: 'task', id: task.id } : null, dragList ?? '');
   const isNew = !!mode.newDots && isNewTask(task, today, store.settings.today_ack_at);
   const rowRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLSpanElement>(null);
@@ -147,7 +161,8 @@ export function TaskRow({ task, mode }: { task: Task; mode: RowMode }) {
     // Mac (раздел 18): всегда одна строка высотой 28; название — многоточием; заметка, повтор, оценка — сразу за ним;
     // проект в «Списком» / Планах / Журнале — серым справа; навык — только при наведении.
     return (
-      <div ref={rowRef} className={'row row-mac' + (selected ? ' selected' : '')} onMouseEnter={placeSkill} {...rowEvents}>
+      <div ref={rowRef} className={'row row-mac' + (selected ? ' selected' : '')} onMouseEnter={placeSkill} {...rowEvents}
+        data-dnd-row={dragList ? task.id : undefined} onPointerDown={dragList ? startDrag : undefined}>
         {menuAt && <TaskContextMenu task={task} at={menuAt} onClose={() => setMenuAt(null)} />}
         <Checkbox task={task} size="mac" />
         {mode.logDate && <span className="log-date">{mode.logDate(task)}</span>}

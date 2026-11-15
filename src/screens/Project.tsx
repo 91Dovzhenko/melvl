@@ -4,6 +4,7 @@ import { useStore } from '../lib/store';
 import { orderProjectTasks, projectProgress, projectTasks } from '../lib/views';
 import { TaskList } from '../tasks/TaskList';
 import { useNewTaskContext } from '../tasks/editing';
+import { useTaskDrops } from '../tasks/drops';
 import { Icon, Ring } from '../ui/icons';
 import { useIsPhone } from '../ui/useIsPhone';
 import { CompleteProjectDialog, EditableNotes, EditableTitle, MoreMenu } from './parts';
@@ -18,6 +19,7 @@ import { goTo } from '../lib/navBridge';
 export function ProjectScreen() {
   const { id = '' } = useParams();
   const store = useStore();
+  const drops = useTaskDrops();
   const today = useToday();
   const phone = useIsPhone();
   const nav = useNavigate();
@@ -142,7 +144,7 @@ export function ProjectScreen() {
       <EditableNotes value={p.notes} onSave={(notes) => store.patch('projects', p.id, { notes })} />
 
       <div style={{ paddingTop: 18, display: 'flex', flexDirection: 'column' }}>
-        <TaskList tasks={showLogged || p.logged_at ? [...visible, ...logged] : visible} mode={{ dueChips: true }} draftHere />
+        <TaskList tasks={showLogged || p.logged_at ? [...visible, ...logged] : visible} mode={{ dueChips: true }} draftHere drag={drops.project(p.id)} />
         {visible.length === 0 && !showLogged && <EmptyProjectHint phone={phone} />}
         {logged.length > 0 && !p.logged_at && (
           <button type="button" className="link-btn" onClick={() => setShowLogged((v) => !v)}>

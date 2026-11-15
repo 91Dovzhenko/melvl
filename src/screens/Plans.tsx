@@ -3,6 +3,8 @@ import { addDays, fmtMin, parseISO } from '../lib/dates';
 import { isListed } from '../lib/views';
 import { TaskList } from '../tasks/TaskList';
 import { useNewTaskContext } from '../tasks/editing';
+import { useTaskDrops } from '../tasks/drops';
+import { useDnd } from '../tasks/dnd';
 import { Icon } from '../ui/icons';
 import { useIsPhone } from '../ui/useIsPhone';
 import { BadgeHeader } from './parts';
@@ -19,6 +21,10 @@ export function Plans() {
   const today = useToday();
   const phone = useIsPhone();
   const tomorrow = addDays(today, 1);
+  const drops = useTaskDrops();
+  // День-цель (19_ТЗ): задачу тянут на другой день — день подсвечен целиком.
+  const dv = useDnd()?.view;
+  const targetDay = dv?.over && !dv.faded && dv.over.list !== dv.origin.list && dv.over.list.startsWith('plans:') ? dv.over.list.slice(6) : null;
   const tasks = store.tasks
     .filter((t) => isListed(t) && !t.someday && t.when_date !== null && t.when_date > today)
     .sort((a, b) => (a.when_date! < b.when_date! ? -1 : a.when_date! > b.when_date! ? 1 : a.sort_order - b.sort_order));
@@ -48,7 +54,7 @@ export function Plans() {
           const name = d === tomorrow ? 'Завтра' : WEEKDAY[dt.getDay()];
           const far = dt.getMonth() !== parseISO(today).getMonth();
           return (
-            <section key={d} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <section key={d} className={targetDay === d ? 'drop-day' : undefined} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <div className="day-head">
                 <span className="day-num">{dt.getDate()}</span>
                 <span className="day-name">{name}{far ? `, ${MONTH[dt.getMonth()]}` : ''}</span>
@@ -59,7 +65,7 @@ export function Plans() {
                 <Icon name="when" size={14} color="#8E9289" />
                 <span>{phone ? 'События — этап 3' : 'События календаря — этап 3'}</span>
               </div>
-              <TaskList tasks={list} mode={{ showProject: true }} draftHere={i === 0} />
+              <TaskList tasks={list} mode={{ showProject: true }} draftHere={i === 0} drag={drops.plans(d)} />
             </section>
           );
         })}

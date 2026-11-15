@@ -20,7 +20,7 @@ type Store = Data & {
   patch<T extends TableName>(table: T, id: string, changes: Partial<Tables[T]>): void;
   remove(table: TableName, id: string): void;
   /** Действие, которое можно отменить («Отменить» в плашке или ⌘Z). */
-  withUndo(message: string, fn: () => void, onUndo?: () => void): void;
+  withUndo(message: string, fn: () => void, onUndo?: () => void, quiet?: boolean): void;
   /** Отменить последнее такое действие. false — отменять нечего. */
   undo(): boolean;
   toast: (msg: string, action?: ToastAction) => void;
@@ -349,7 +349,8 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
     return true;
   }, [offline, patch, remove, setTable, toast, track]);
 
-  const withUndo = useCallback((message: string, fn: () => void, onUndo?: () => void) => {
+  // quiet — без плашки «Отменить» (перестановка перетаскиванием): ⌘Z всё равно отменяет.
+  const withUndo = useCallback((message: string, fn: () => void, onUndo?: () => void, quiet?: boolean) => {
     recorder.current = [];
     try { fn(); } finally {
       const steps = recorder.current;
@@ -357,7 +358,7 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
       if (steps.length) {
         undoStack.current.push({ message, steps, onUndo });
         if (undoStack.current.length > 20) undoStack.current.shift();
-        toast(message, { label: 'Отменить', run: () => { undo(); } });
+        if (!quiet) toast(message, { label: 'Отменить', run: () => { undo(); } });
       }
     }
   }, [toast, undo]);

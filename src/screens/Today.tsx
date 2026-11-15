@@ -5,6 +5,7 @@ import { isListed, isToday, projectProgress, todayGroups, todaySums } from '../l
 import { TodaySumBlock } from '../ui/Sums';
 import { TaskList } from '../tasks/TaskList';
 import { useEditing, useNewTaskContext } from '../tasks/editing';
+import { useTaskDrops } from '../tasks/drops';
 import { Icon, Ring } from '../ui/icons';
 import { useIsPhone } from '../ui/useIsPhone';
 import { BadgeHeader } from './parts';
@@ -19,6 +20,16 @@ export function Today() {
   const flat = store.settings.today_view === 'list';
   const choose = (v: 'projects' | 'list') => { if (v !== store.settings.today_view) store.patchSettings({ today_view: v }); };
   const groups = todayGroups(store, today, flat);
+  const drops = useTaskDrops();
+  // Своя дневная группа задачи (19_ТЗ): дневная — где она сейчас; вечерняя — группа её проекта (области, «без проекта»).
+  const dayGroupOf = new Map(groups.filter((g) => g.kind !== 'evening').flatMap((g) => g.tasks.map((t) => [t.id, g.key] as const)));
+  const homeOf = (id: string) => {
+    if (flat) return 'flat';
+    const known = dayGroupOf.get(id);
+    if (known) return known;
+    const t = store.tasks.find((x) => x.id === id);
+    return t?.project_id ?? t?.area_id ?? 'none';
+  };
   const list = store.tasks.filter((t) => isListed(t) && isToday(t, today));
 
   // В «Сегодня» новая задача — с датой сегодня; под выделенной — в её же группе.
@@ -90,7 +101,7 @@ export function Today() {
                 </div>
               )}
               <TaskList tasks={g.tasks} draftHere={i === 0 && g.kind === 'none'}
-                mode={{ showProject: flat || g.kind === 'evening', newDots: true }} />
+                mode={{ showProject: flat || g.kind === 'evening', newDots: true }} drag={drops.today(g.key, homeOf)} />
             </section>
           ))}
         </div>

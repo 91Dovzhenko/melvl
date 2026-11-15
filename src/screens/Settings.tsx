@@ -326,7 +326,7 @@ function SkillsSection() {
           }} />
           <PopItem icon={menu.skill.active ? 'clear' : 'check'} label={menu.skill.active ? 'Скрыть' : 'Показать'}
             onClick={() => { store.patch('skills', menu.skill.id, { active: !menu.skill.active }); setMenu(null); }} />
-          <PopItem icon="back" label="Выше" onClick={() => { move(menu.skill, -1); setMenu(null); }} />
+          <PopItem icon="chevronUp" label="Выше" onClick={() => { move(menu.skill, -1); setMenu(null); }} />
           <PopItem icon="chevronDown" label="Ниже" onClick={() => { move(menu.skill, 1); setMenu(null); }} />
           <PopSep />
           <PopItem icon="trash" label="Удалить" onClick={() => { setDeleting(menu.skill); setMenu(null); }} />

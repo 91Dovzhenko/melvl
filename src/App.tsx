@@ -22,6 +22,7 @@ import { Sidebar, useCreateList } from './shell/Sidebar';
 import { PhoneMenu } from './shell/PhoneMenu';
 import { EditingProvider, useEditing } from './tasks/editing';
 import { TaskActionBar } from './tasks/actions';
+import { DndProvider } from './tasks/dnd';
 import { PhoneNewTask } from './tasks/PhoneNewTask';
 import { Icon, Ring } from './ui/icons';
 import { useIsPhone } from './ui/useIsPhone';
@@ -37,7 +38,7 @@ export default function App() {
       {PREVIEW ? (
         <AccountProvider value={{ email: 'demo@example.com', name: 'Демо' }}>
           <StoreProvider offline seed={PREVIEW_SEED}>
-            <EditingProvider><MomentsProvider><Shell /></MomentsProvider></EditingProvider>
+            <EditingProvider><MomentsProvider><DndProvider><Shell /></DndProvider></MomentsProvider></EditingProvider>
           </StoreProvider>
         </AccountProvider>
       ) : <Gate />}
@@ -54,7 +55,7 @@ function Gate() {
   return (
     <AccountProvider value={{ email: u.email ?? '', name: meta.full_name || meta.name || '' }}>
       <StoreProvider>
-        <EditingProvider><MomentsProvider><Shell /></MomentsProvider></EditingProvider>
+        <EditingProvider><MomentsProvider><DndProvider><Shell /></DndProvider></MomentsProvider></EditingProvider>
       </StoreProvider>
     </AccountProvider>
   );

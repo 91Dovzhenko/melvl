@@ -27,10 +27,13 @@ export type Group = { key: string; kind: 'none' | 'project' | 'area' | 'evening'
 
 /** «Сегодня»: без проекта (без заголовка) → проекты в порядке меню → задачи областей → «Вечером». */
 export function todayGroups(d: Data, today: string, flat: boolean): Group[] {
-  const all = d.tasks.filter((t) => isListed(t) && isToday(t, today))
-    .sort((a, b) => a.today_order - b.today_order || a.sort_order - b.sort_order);
-  const day = all.filter((t) => !t.when_evening);
-  const evening = all.filter((t) => t.when_evening);
+  // Порядок (19_ТЗ): «По проектам» — внутри группы проекта тот же, что в проекте (sort_order);
+  // «Списком» и «Вечером» — свой порядок «Сегодня» (today_order).
+  const byToday = (a: Task, b: Task) => a.today_order - b.today_order || a.sort_order - b.sort_order;
+  const bySort = (a: Task, b: Task) => a.sort_order - b.sort_order || a.today_order - b.today_order;
+  const all = d.tasks.filter((t) => isListed(t) && isToday(t, today));
+  const day = all.filter((t) => !t.when_evening).sort(flat ? byToday : bySort);
+  const evening = all.filter((t) => t.when_evening).sort(byToday);
   const groups: Group[] = [];
   if (flat) {
     groups.push({ key: 'flat', kind: 'none', tasks: day });
@@ -57,6 +60,32 @@ export function projectTasks(d: Pick<Data, 'tasks'>, projectId: string) {
 
 type RuleLite = { task_id: string; next_date: string | null };
 
+export const PROJECT_GROUP_LABEL: Record<string, string> = {
+  today: 'Сегодня', evening: 'Вечером', none: 'Без даты', wait: 'Ожидание', someday: 'Когда-нибудь',
+};
+
+/**
+ * Группа задачи в проекте: 'today' | 'evening' | 'none' | 'date:YYYY-MM-DD' | 'wait' | 'someday'.
+ * Перетаскивание в проекте не выводит задачу из её группы (19_ТЗ).
+ */
+export function projectGroupOf(t: Task, next: Map<string, string | null>, openCopy: Set<string>, today: string): { rank: number; date: string; key: string } {
+  if (t.is_template) {
+    const nd = next.get(t.id) ?? null;
+    if (openCopy.has(t.id) || !nd) return { rank: 5, date: nd ?? '9999-12-31', key: 'wait' };
+    return { rank: 3, date: nd, key: 'date:' + nd };
+  }
+  if (t.someday) return { rank: 6, date: '', key: 'someday' };
+  if (!t.when_date) return { rank: 2, date: '', key: 'none' };
+  if (t.when_date <= today) return t.when_evening ? { rank: 1.5, date: '', key: 'evening' } : { rank: 1, date: '', key: 'today' };
+  return { rank: 3, date: t.when_date, key: 'date:' + t.when_date };
+}
+
+export function projectGroupMaps(all: Task[], rules: RuleLite[]) {
+  const next = new Map(rules.map((r) => [r.task_id, r.next_date]));
+  const openCopy = new Set(all.filter((c) => c.repeat_template_id && c.status === 'open' && !c.deleted_at && !c.logged_at).map((c) => c.repeat_template_id!));
+  return { next, openCopy };
+}
+
 /**
  * Порядок задач в проекте (п. 3, 17_ТЗ), сверху вниз:
  * 1) «Сегодня» (и просроченные) — сначала дневные, потом «Вечером»;
@@ -64,25 +93,15 @@ type RuleLite = { task_id: string; next_date: string | null };
  * 3) будущее по дате, ближайшие выше, вместе с шаблонами повторов по дате следующей копии;
  * 4) «Ожидание» — шаблоны, у которых открыта копия (или нет следующей даты), по дате следующей копии;
  * 5) «Когда-нибудь» — в самом низу, как в Things (в ТЗ не названо — решение при сборке).
- * Внутри группы и одной даты — по созданию (ручной порядок — этап 3).
+ * Внутри группы и одной даты — ручной порядок (sort_order, перетаскивание — 19_ТЗ); при равенстве — по созданию.
  */
 export function orderProjectTasks(list: Task[], all: Task[], rules: RuleLite[], today: string): Task[] {
-  const next = new Map(rules.map((r) => [r.task_id, r.next_date]));
-  const openCopy = new Set(all.filter((c) => c.repeat_template_id && c.status === 'open' && !c.deleted_at && !c.logged_at).map((c) => c.repeat_template_id!));
-  const key = (t: Task): [number, string] => {
-    if (t.is_template) {
-      const nd = next.get(t.id) ?? null;
-      if (openCopy.has(t.id) || !nd) return [5, nd ?? '9999-12-31'];
-      return [3, nd];
-    }
-    if (t.someday) return [6, ''];
-    if (!t.when_date) return [2, ''];
-    if (t.when_date <= today) return [t.when_evening ? 1.5 : 1, ''];
-    return [3, t.when_date];
-  };
+  const { next, openCopy } = projectGroupMaps(all, rules);
+  const g = new Map(list.map((t) => [t.id, projectGroupOf(t, next, openCopy, today)]));
   return [...list].sort((a, b) => {
-    const [ga, da] = key(a), [gb, db] = key(b);
-    return ga - gb || (da < db ? -1 : da > db ? 1 : 0) || (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0) || a.sort_order - b.sort_order;
+    const A = g.get(a.id)!, B = g.get(b.id)!;
+    return A.rank - B.rank || (A.date < B.date ? -1 : A.date > B.date ? 1 : 0) || a.sort_order - b.sort_order
+      || (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0);
   });
 }
 
