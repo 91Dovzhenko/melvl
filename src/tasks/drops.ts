@@ -60,10 +60,22 @@ export function useTaskDrops() {
      * «Сегодня»: список группы group ('flat', 'evening', проект, область, 'none').
      * homeOf — своя дневная группа задачи (для вечерней — группа её проекта).
      */
-    today(group: string, homeOf: (id: string) => string): ListDrag {
+    today(group: string, homeOf: (id: string) => string, groupOf: (key: string) => { name: string; ids: string[] } | null): ListDrag {
       return {
         id: 'today:' + group,
-        resolve: (item, desired) => (todayDrop(fromOf(item.id), group, homeOf(item.id)).ok ? { index: desired, valid: true } : null),
+        resolve: (item, desired) => {
+          const r = todayDrop(fromOf(item.id), group, homeOf(item.id));
+          if (!r.ok) return null;
+          if (r.key) return { index: desired, valid: true };
+          // Вечерняя над чужой дневной группой: место — в конце группы своего проекта (она подсвечена), подсказка у курсора.
+          const home = homeOf(item.id);
+          const g = groupOf(home);
+          const t = byId(item.id);
+          const name = g?.name ?? (t?.project_id ? store.projects.find((p) => p.id === t.project_id)?.name : t?.area_id ? store.areas.find((a) => a.id === t.area_id)?.name : '') ?? '';
+          const hint = name ? `Встанет в «${name}» — станет дневной` : 'Встанет к задачам без проекта — станет дневной';
+          if (!g) return { index: desired, valid: true, hint };
+          return { index: g.ids.filter((id) => id !== item.id).length, valid: true, hint, list: 'today:' + home };
+        },
         drop: (item, index, others) => {
           const r = todayDrop(fromOf(item.id), group, homeOf(item.id));
           if (!r.ok) return;

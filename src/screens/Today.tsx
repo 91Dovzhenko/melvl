@@ -6,6 +6,7 @@ import { TodaySumBlock } from '../ui/Sums';
 import { TaskList } from '../tasks/TaskList';
 import { useEditing, useNewTaskContext } from '../tasks/editing';
 import { useTaskDrops } from '../tasks/drops';
+import { useDnd } from '../tasks/dnd';
 import { Icon, Ring } from '../ui/icons';
 import { useIsPhone } from '../ui/useIsPhone';
 import { BadgeHeader } from './parts';
@@ -23,6 +24,14 @@ export function Today() {
   const drops = useTaskDrops();
   // Своя дневная группа задачи (19_ТЗ): дневная — где она сейчас; вечерняя — группа её проекта (области, «без проекта»).
   const dayGroupOf = new Map(groups.filter((g) => g.kind !== 'evening').flatMap((g) => g.tasks.map((t) => [t.id, g.key] as const)));
+  const groupOf = (key: string) => {
+    const g = groups.find((x) => x.key === key && x.kind !== 'evening');
+    if (!g) return null;
+    return { name: g.kind === 'project' ? g.project?.name || 'Новый проект' : g.kind === 'area' ? g.area?.name || 'Новая область' : '', ids: g.tasks.map((t) => t.id) };
+  };
+  // Вечернюю тянут над чужой дневной группой — группа её проекта подсвечена целиком (как день-цель в «Планах»).
+  const dv = useDnd()?.view;
+  const targetGroup = dv?.redirect && dv.over ? dv.over.list.replace(/^today:/, '') : null;
   const homeOf = (id: string) => {
     if (flat) return 'flat';
     const known = dayGroupOf.get(id);
@@ -80,7 +89,7 @@ export function Today() {
         <div className="groups">
           {hasDraftTop && !firstIsNone && <TaskList tasks={[]} draftHere />}
           {groups.map((g, i) => (
-            <section className="group" key={g.key}>
+            <section className={'group' + (targetGroup === g.key ? ' drop-day' : '')} key={g.key}>
               {g.kind === 'project' && g.project && (
                 <div className="group-head">
                   <Ring size={18} progress={projectProgress(store, g.project.id)} done={g.project.status === 'completed'} />
@@ -101,7 +110,7 @@ export function Today() {
                 </div>
               )}
               <TaskList tasks={g.tasks} draftHere={i === 0 && g.kind === 'none'}
-                mode={{ showProject: flat || g.kind === 'evening', newDots: true }} drag={drops.today(g.key, homeOf)} />
+                mode={{ showProject: flat || g.kind === 'evening', newDots: true }} drag={drops.today(g.key, homeOf, groupOf)} />
             </section>
           ))}
         </div>
