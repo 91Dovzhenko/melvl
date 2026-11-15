@@ -315,3 +315,56 @@ test('Время · запись: этап только вместе с прое
   assert.equal(isWritableValue(V('Блог', 'Видеоблог')), true);
   assert.equal(isWritableValue(V('Блог')), true);
 });
+
+// ── 9. Протягивание в обе стороны (правка после прода) ──
+
+test('Время · протянуть: нижнюю ручку вверх — блок укорачивается снизу, хвост пустой; отмена возвращает хвост', async () => {
+  const { dragSpan, planResize } = await import('../day.ts');
+  const d = '2026-11-16';
+  const W = V('Работа', 'Основной');
+  const grid = dayGrid(fill(d, 22, 28, W), d); // 11:00–14:00
+  const block = { start: 22, end: 28 };
+  const next = dragSpan(block, 'bottom', 23); // отпустили на 11:30 → 11:00–12:00
+  assert.deepEqual(next, { start: 22, end: 24 });
+  const plan = planResize(grid, block, next, W);
+  assert.deepEqual(plan.changes.map((c) => [c.slot, c.value]), [[24, null], [25, null], [26, null], [27, null]]);
+  assert.equal(plan.cleared, 4);
+  assert.equal(plan.filled, 0);
+  assert.ok(plan.prev.every((p) => p.value && p.value.direction_id === 'Основной')); // ⌘Z вернёт очищенные
+});
+
+test('Время · протянуть: верхнюю ручку вниз — блок укорачивается сверху', async () => {
+  const { dragSpan, resizePlan } = await import('../day.ts');
+  const block = { start: 22, end: 28 };
+  const next = dragSpan(block, 'top', 25); // начало — 12:30
+  assert.deepEqual(next, { start: 25, end: 28 });
+  assert.deepEqual(resizePlan(block, next), { fill: [25, 26, 27], clear: [22, 23, 24] });
+});
+
+test('Время · протянуть: минимум 1 слот — ручка не идёт дальше противоположного края', async () => {
+  const { dragSpan } = await import('../day.ts');
+  const block = { start: 22, end: 28 };
+  assert.deepEqual(dragSpan(block, 'bottom', 22), { start: 22, end: 23 });
+  assert.deepEqual(dragSpan(block, 'bottom', 5), { start: 22, end: 23 });
+  assert.deepEqual(dragSpan(block, 'top', 27), { start: 27, end: 28 });
+  assert.deepEqual(dragSpan(block, 'top', 40), { start: 27, end: 28 });
+  assert.deepEqual(dragSpan(block, 'bottom', 99), { start: 22, end: 48 }); // и не дальше 24:00
+});
+
+test('Время · протянуть: смена направления в одном протягивании — применяется то, где отпустили', async () => {
+  const { dragSpan, planResize } = await import('../day.ts');
+  const d = '2026-11-16';
+  const W = V('Работа');
+  const grid = dayGrid([...fill(d, 22, 26, W), S(d, 27, V('Потери'))], d); // 11:00–13:00, «Потери» 13:30
+  const block = { start: 22, end: 26 };
+  // Повёл вниз до 15:00, потом вверх до 11:30 и отпустил: значение берётся только с последней точки.
+  const path = [29, 30, 27, 24, 23];
+  const last = dragSpan(block, 'bottom', path[path.length - 1]);
+  const plan = planResize(grid, block, last, W);
+  assert.deepEqual(last, { start: 22, end: 24 });
+  assert.deepEqual(plan.changes.map((c) => c.slot), [24, 25]); // «Потери» в 13:30 не тронуты
+  // Вниз и обратно вниз — удлинение перезаписывает пройденное, как раньше
+  const down = planResize(grid, block, dragSpan(block, 'bottom', 28), W);
+  assert.deepEqual(down.changes.map((c) => c.slot), [26, 27, 28]);
+  assert.equal(down.cleared, 0);
+});

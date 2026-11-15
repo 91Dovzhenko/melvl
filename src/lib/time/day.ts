@@ -139,6 +139,39 @@ export function dragRange(block: { start: number; end: number }, edge: 'top' | '
   return range(Math.min(t, block.end - 1), block.end - 1);
 }
 
+/** Новые границы блока: [start, end) — end не включительно. */
+export type Span = { start: number; end: number };
+
+/**
+ * Протянуть блок за край в любую сторону (как событие в календаре): новые границы по слоту под курсором.
+ * Нижняя ручка: конец — после слота под курсором; верхняя: начало — слот под курсором.
+ * Минимум — 1 слот: дальше противоположного края ручка не идёт.
+ */
+export function dragSpan(block: Span, edge: 'top' | 'bottom', to: number): Span {
+  const t = Math.max(0, Math.min(SLOTS - 1, to));
+  if (edge === 'bottom') return { start: block.start, end: Math.max(block.start + 1, t + 1) };
+  return { start: Math.min(t, block.end - 1), end: block.end };
+}
+
+/** Было [block), стало [next): какие слоты получат значение блока и какие слоты блока освободятся (станут пустыми). */
+export function resizePlan(block: Span, next: Span) {
+  const fill = range(next.start, next.end - 1);
+  const clear: number[] = [];
+  for (let i = block.start; i < block.end; i++) if (i < next.start || i >= next.end) clear.push(i);
+  return { fill, clear };
+}
+
+/**
+ * Изменения слотов при новых границах блока: значение — на новый диапазон, освободившиеся — очистить.
+ * Одна правка — одна отмена: `prev` возвращает и перезаписанные, и очищенные слоты.
+ */
+export function planResize(grid: (SlotValue | null)[], block: Span, next: Span, value: SlotValue) {
+  const { fill, clear } = resizePlan(block, next);
+  const a = planSet(grid, fill, value);
+  const b = planSet(grid, clear, null);
+  return { changes: [...a.changes, ...b.changes], prev: [...a.prev, ...b.prev], filled: a.changes.length, cleared: b.changes.length };
+}
+
 /** Изменение слота: новое значение или null (очистить). */
 export type SlotChange = { slot: number; value: SlotValue | null };
 

@@ -11,7 +11,7 @@ import { dayAdd, dayAfterTick, slotOfMin, slotTime, weekdayMon0 } from '../../li
 import { fmtHM } from '../../lib/time/format';
 import { colorHex, tint } from '../../lib/time/palette';
 import {
-  accountedMin, blockAt, dayBlocks, dayGrid, dragRange, planSet, range, sameValue, untilEnd, valuePath, type Block,
+  accountedMin, blockAt, dayBlocks, dayGrid, dragSpan, planResize, planSet, range, resizePlan, sameValue, untilEnd, valuePath, type Block,
 } from '../../lib/time/day';
 import { SLOTS, SLOT_MIN, type SlotValue } from '../../lib/time/types';
 import { MarkPop } from './MarkPop';
@@ -55,6 +55,8 @@ export function DayView() {
   /** Строка слота: Mac 28, iPhone 36. */
   const rowH = phone ? 36 : ROW;
   const [wheel, setWheel] = useState(false);
+  /** iPhone: блок, по которому открыт лист, — чтобы «до …» раньше его конца очистило хвост. */
+  const [phoneBlock, setPhoneBlock] = useState<{ start: number; end: number; value: SlotValue } | null>(null);
   const now = useMskNow();
   const [date, setDate] = useState(now.date);
   const [sel, setSel] = useState<number[]>([]);
@@ -90,17 +92,20 @@ export function DayView() {
   const accounted = accountedMin(grid);
   const empty = accounted === 0;
 
-  // Во время протягивания: пройденные слоты — значение блока, бледно и в пунктире.
+  // Во время протягивания (в любую сторону): пунктир — будущие границы блока, следует за курсором;
+  // пройденные слоты — значение блока бледно, освободившиеся слоты блока — пустые.
   const preview = useMemo(() => {
     if (drag?.kind !== 'fill') return null;
-    const all = dragRange(drag.block, drag.edge, drag.to);
-    const extra = all.filter((i) => i < drag.block.start || i >= drag.block.end);
-    return extra.length ? { slots: extra, value: drag.value, start: extra[0], end: extra[extra.length - 1] + 1 } : null;
+    const next = dragSpan(drag.block, drag.edge, drag.to);
+    const { fill, clear } = resizePlan(drag.block, next);
+    const extra = fill.filter((i) => i < drag.block.start || i >= drag.block.end);
+    return { slots: extra, cleared: clear, value: drag.value, start: next.start, end: next.end };
   }, [drag]);
   const shown = useMemo(() => {
     if (!preview) return grid as (SlotValue | null)[];
     const g = [...grid] as (SlotValue | null)[];
     for (const i of preview.slots) g[i] = { ...preview.value, category_id: preview.value.category_id + PREVIEW };
+    for (const i of preview.cleared) g[i] = null;
     return g;
   }, [grid, preview]);
   const blocks = useMemo(() => dayBlocks(shown, split), [shown, split]);
@@ -188,16 +193,17 @@ export function DayView() {
   const label = (v: SlotValue) => valuePath(v, catalog).join(' · ');
   const span = (start: number, end: number) => `${slotTime(start, false)}–${slotTime(end, false)}`;
 
+  /** Отпустили ручку: значение — на новые границы, освободившиеся слоты — пустые; одна правка — одна отмена. */
   const applyFill = (d: Extract<Drag, { kind: 'fill' }>) => {
-    const slots = dragRange(d.block, d.edge, d.to);
-    const { changes } = planSet(grid, slots, d.value);
-    const lo = slots[0], hi = slots[slots.length - 1] + 1;
-    setSel(range(lo, hi - 1));
+    const next = dragSpan(d.block, d.edge, d.to);
+    const { changes, filled, cleared } = planResize(grid, d.block, next, d.value);
+    setSel(range(next.start, next.end - 1));
     setBlockSel(true);
     setPopOpen(false);
     if (!changes.length) return;
-    const where = d.edge === 'bottom' ? `до ${slotTime(hi, false)}` : `с ${slotTime(lo, false)}`;
-    store.withUndo(`${label(d.value)} — ${where}, ${nSlots(changes.length)}`, () => store.setSlots(date, changes));
+    const where = d.edge === 'bottom' ? `до ${slotTime(next.end, false)}` : `с ${slotTime(next.start, false)}`;
+    const what = cleared && !filled ? `очищено ${nSlots(cleared)}` : nSlots(filled + cleared);
+    store.withUndo(`${label(d.value)} — ${where}, ${what}`, () => store.setSlots(date, changes));
   };
 
   live.current = { grid, split, applyFill };
@@ -268,7 +274,8 @@ export function DayView() {
     if (grid[i] && !inSplit) {
       const b = blockAt(dayBlocks(grid, split), i)!;
       setSel(range(b.start, b.end - 1)); setBlockSel(true);
-    } else { setSel([i]); setBlockSel(false); }
+      setPhoneBlock({ start: b.start, end: b.end, value: b.value });
+    } else { setSel([i]); setBlockSel(false); setPhoneBlock(null); }
     setPopOpen(true);
   };
 
@@ -328,7 +335,9 @@ export function DayView() {
   const selStart = sel[0] ?? 0;
   const selEnd = sel.length ? sel[sel.length - 1] + 1 : 0;
   const setEnd = (end: number) => setSel(range(selStart, Math.max(selStart, Math.min(SLOTS, end) - 1)));
-  const wholeBlock = blockSel && selBlock && selBlock.start === selStart && selBlock.end === selEnd;
+  // iPhone: «весь блок» — пока «с … до …» совпадает с блоком, по которому открыт лист.
+  const wholeBlock = blockSel && selBlock && selBlock.start === selStart && selBlock.end === selEnd
+    && (!phone || !phoneBlock || (phoneBlock.start === selStart && phoneBlock.end === selEnd));
   const untilInfo = `${wholeBlock ? 'весь блок' : nSlots(sel.length)} · ${fmtHM(sel.length * SLOT_MIN)}`;
   const sheetHead = `${span(selStart, selEnd)}${wholeBlock ? ' · весь блок' : ''}`;
   const untilTop = phone && sel.length > 0 && runs(sel).length === 1 ? (
@@ -354,14 +363,39 @@ export function DayView() {
   ) : null;
   const wheelNode = phone && wheel ? <EndWheel start={selStart} end={selEnd} onPick={(e2) => { setEnd(e2); setWheel(false); }} /> : null;
 
+  /**
+   * iPhone, лист блока: значение (новое или прежнее) — на «с … до …», слоты блока за новыми границами — пустые.
+   * v = null — «Очистить блок»: и блок целиком, и выбранный диапазон.
+   */
+  const applyPhoneBlock = (v: SlotValue | null | undefined) => {
+    const b = phoneBlock!;
+    const next = { start: selStart, end: selEnd };
+    setWheel(false); setPopOpen(false); setSel([]); setBlockSel(false); setPhoneBlock(null);
+    if (v === null) {
+      const { changes } = planSet(grid, range(Math.min(b.start, next.start), Math.max(b.end, next.end) - 1), null);
+      if (changes.length) store.withUndo(`Очищено · ${span(b.start, Math.max(b.end, next.end))}`, () => store.setSlots(date, changes));
+      return;
+    }
+    const value = v ?? b.value;
+    const { changes, cleared } = planResize(grid, b, next, value);
+    if (!changes.length) return;
+    store.withUndo(`${label(value)} · ${span(next.start, next.end)}${cleared ? ` · очищено ${nSlots(cleared)}` : ''}`, () => store.setSlots(date, changes));
+  };
+  const closeSheet = () => {
+    // «Готово» / тап мимо в листе блока с изменённым «до …» — блок меняет границы с прежним значением.
+    if (phoneBlock && (selStart !== phoneBlock.start || selEnd !== phoneBlock.end)) { applyPhoneBlock(undefined); return; }
+    setPopOpen(false); setSel([]); setWheel(false); setPhoneBlock(null);
+  };
+
   const sheetEl = phone && popOpen && sel.length > 0 ? createPortal(
-    <div className="sheet-scrim" data-keep-card onClick={() => { setPopOpen(false); setSel([]); setWheel(false); }}>
-      <MarkPop ref={popRef} sheet head={wheel ? 'До какого времени' : sheetHead} current={current} block={!!wholeBlock} catalog={catalog}
+    <div className="sheet-scrim" data-keep-card onClick={closeSheet}>
+      <MarkPop ref={popRef} sheet head={wheel ? 'До какого времени' : sheetHead} current={current} block={!!phoneBlock} catalog={catalog}
         style={{}} top={untilTop} wheel={wheelNode}
-        onPick={(v) => { setWheel(false); applyValue(v); }} onClear={() => { setWheel(false); applyValue(null); }}
-        onClose={() => { setPopOpen(false); setSel([]); setWheel(false); }}
+        onPick={(v) => { setWheel(false); if (phoneBlock) applyPhoneBlock(v); else applyValue(v); }}
+        onClear={() => { setWheel(false); if (phoneBlock) applyPhoneBlock(null); else applyValue(null); }}
+        onClose={closeSheet}
         onSplit={wholeBlock && selBlock.end - selBlock.start > 1 ? () => {
-          setSplit({ start: selBlock.start, end: selBlock.end }); setSel([]); setBlockSel(false); setPopOpen(false);
+          setSplit({ start: selBlock.start, end: selBlock.end }); setSel([]); setBlockSel(false); setPopOpen(false); setPhoneBlock(null);
         } : undefined} />
     </div>,
     document.body,
@@ -443,7 +477,7 @@ export function DayView() {
           onMouseMove={(e) => { if (!selBlock) { if (hoverSel) setHoverSel(false); return; } const i = slotAt(e.clientY); const on = i >= selBlock.start - 1 && i <= selBlock.end; if (on !== hoverSel) setHoverSel(on); }}
           onMouseLeave={() => setHoverSel(false)}
           role="grid" aria-label={`Слоты: ${dayTitle(date, now.date)}`}>
-          {renderRows(shown, blocks, sel, catalog, rowH, false)}
+          {renderRows(shown, blocks, preview ? [] : sel, catalog, rowH, false)}
 
           {split && (
             <>
@@ -451,7 +485,7 @@ export function DayView() {
               <span className="day-split-label" style={{ top: split.start * rowH - 11 }}>разбит на слоты · клик вне — собрать</span>
             </>
           )}
-          {selRuns.map((r) => (
+          {!preview && selRuns.map((r) => (
             <div key={r.start} className="day-sel" style={{ top: r.start * rowH, height: (r.end - r.start) * rowH }} aria-hidden="true" />
           ))}
           {preview && <div className="day-preview" style={{ top: preview.start * rowH, height: (preview.end - preview.start) * rowH }} aria-hidden="true" />}
