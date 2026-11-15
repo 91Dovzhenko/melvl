@@ -40,9 +40,11 @@ const isDone = (t: Task) => t.status === 'completed' && !!t.completed_at && !t.d
 const byTime = (a: { at: number; taskId?: string }, b: { at: number; taskId?: string }) =>
   a.at - b.at || String(a.taskId).localeCompare(String(b.taskId));
 
-/** Навык задачи: свой или навык проекта по умолчанию. */
+/** Навык задачи: свой, «без навыка» явно (null) или навык проекта по умолчанию. */
 export function effectiveSkillId(t: Task, projects: Map<string, Project>): string | null {
   if (t.skill_id) return t.skill_id;
+  // «Без навыка» явно (п. 7, 17_ТЗ): навык проекта не берётся, часов нет.
+  if (t.no_skill) return null;
   const p = t.project_id ? projects.get(t.project_id) : undefined;
   return p?.default_skill_id ?? null;
 }

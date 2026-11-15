@@ -31,8 +31,9 @@ export function useTaskActions() {
       const siblings = store.tasks.filter((x) => x.project_id === fresh.project_id && !x.deleted_at);
       let copyId = '';
       store.withUndo('Задача продублирована', () => {
-        const { id: _id, created_at: _c, completed_at: _d, logged_at: _l, repeat_template_id: _r, repeat_date: _rd, ...rest } = fresh;
-        void _id; void _c; void _d; void _l; void _r; void _rd;
+        // no_skill сохраняется (в rest); дата дубликата поставлена руками сейчас — не «новая» (п. 9).
+        const { id: _id, created_at: _c, completed_at: _d, logged_at: _l, repeat_template_id: _r, repeat_date: _rd, when_set_at: _w, new_seen_at: _n, ...rest } = fresh;
+        void _id; void _c; void _d; void _l; void _r; void _rd; void _w; void _n;
         copyId = store.insert('tasks', {
           ...rest, status: 'open',
           sort_order: orderAfter(siblings, fresh, 'sort_order'),
@@ -154,7 +155,8 @@ export function TaskPropPicker({ task, kind, anchor, onClose }: { task: Task; ki
   if (kind === 'est') return <EstimatePicker anchor={anchor} onClose={onClose} value={task.estimate_min} onPick={(v) => patch({ estimate_min: v })} />;
   if (kind === 'skill') {
     const inherited = skillOf(store, { skill_id: null, project_id: task.project_id }).skill;
-    return <SkillPicker anchor={anchor} onClose={onClose} value={task.skill_id} inherited={inherited} onPick={(id) => patch({ skill_id: id })} />;
+    return <SkillPicker anchor={anchor} onClose={onClose} value={task.skill_id} noSkill={task.no_skill} inherited={inherited}
+      onPick={(id, none) => patch({ skill_id: id, no_skill: !!none })} />;
   }
   return <MovePicker task={task} anchor={anchor} onClose={onClose} onPick={(to) => act.move(task, to)} />;
 }

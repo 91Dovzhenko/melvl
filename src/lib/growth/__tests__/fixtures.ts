@@ -23,7 +23,7 @@ export function task(id: string, extra: Partial<Task> = {}): Task {
   return {
     id, project_id: null, area_id: null, title: id, notes: '', when_date: null, when_evening: false, someday: false,
     estimate_min: null, skill_id: null, deadline: null, status: 'open', completed_at: null, logged_at: null,
-    sort_order: 0, today_order: 0, repeat_template_id: null, repeat_date: null, is_template: false, is_habit: false,
+    sort_order: 0, today_order: 0, repeat_template_id: null, repeat_date: null, is_template: false, is_habit: false, no_skill: false, when_set_at: null, new_seen_at: null,
     created_at: '2026-01-01T00:00:00Z', deleted_at: null, ...extra,
   };
 }

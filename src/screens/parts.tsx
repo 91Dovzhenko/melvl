@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon, Ring, type IconName } from '../ui/icons';
 import { useIsPhone } from '../ui/useIsPhone';
+import { hasLink, LinkText } from '../ui/LinkText';
 import { Pop, PopItem } from '../ui/Pop';
 
 /** Шапка раздела с квадратным значком (Входящие, Сегодня, Планы, Журнал). */
@@ -57,12 +58,22 @@ export function EditableTitle({ value, placeholder, onSave, autoFocus, focusSign
 /** Заметки по месту. */
 export function EditableNotes({ value, onSave }: { value: string; onSave: (v: string) => void }) {
   const [v, setV] = useState(value);
+  const [editing, setEditing] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
   useEffect(() => { setV(value); }, [value]);
-  useLayoutEffect(() => { autosize(ref.current); }, [v]);
+  useLayoutEffect(() => { autosize(ref.current); }, [v, editing]);
+  // Заметка с адресом — ссылками (п. 6, 17_ТЗ); клик по тексту — правка.
+  if (!editing && hasLink(v)) {
+    return (
+      <div className="notes-edit notes-view" role="button" tabIndex={0} aria-label="Заметки — изменить"
+        onClick={() => setEditing(true)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); setEditing(true); } }}>
+        <LinkText text={v} />
+      </div>
+    );
+  }
   return (
-    <textarea ref={ref} className="notes-edit" rows={1} value={v} placeholder="Заметки" aria-label="Заметки"
-      onChange={(e) => setV(e.target.value)} onBlur={() => { if (v !== value) onSave(v); }} />
+    <textarea ref={ref} className="notes-edit" rows={1} value={v} placeholder="Заметки" aria-label="Заметки" autoFocus={editing}
+      onChange={(e) => setV(e.target.value)} onBlur={() => { setEditing(false); if (v !== value) onSave(v); }} />
   );
 }
 

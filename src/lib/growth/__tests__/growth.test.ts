@@ -392,3 +392,46 @@ test('Удаление · что меняется в базе и цифры по
   assert.equal(after.total, 580);
   assert.equal(hoursSnapshot(DEL).total, 910);            // «Отменить» = исходные данные
 });
+
+// ───────────── П. 7 (17_ТЗ): «Без навыка» в проекте с навыком по умолчанию ─────────────
+const pProd = project('pp', { default_skill_id: 's3', is_quest: true, quest_estimate_min: 120 });
+const NS = g([
+  done('ns', '2026-11-13', 60, null, 'pp', '10:00', { no_skill: true }),   // без навыка явно
+  done('as', '2026-11-13', 30, null, 'pp', '11:00'),                        // как у проекта
+], [pProd]);
+
+test('Без навыка · задача в проекте с навыком часов не даёт; «как у проекта» — даёт', () => {
+  const h = hoursSnapshot(NS);
+  assert.equal(h.skill.get('s3'), 30);
+  assert.equal(h.total, 30);
+});
+
+test('Без навыка · отметка — без плашки роста', () => {
+  assert.deepEqual(taskMoment(NS, 'ns'), { kind: 'none' });
+  assert.equal(taskMoment(NS, 'as').kind, 'hours');
+});
+
+test('Без навыка · смена навыка проекта её не трогает; «как у проекта» взяла новый навык', () => {
+  const changed = g(NS.tasks, [{ ...pProd, default_skill_id: 's1' }]);
+  const h = hoursSnapshot(changed);
+  assert.equal(h.skill.get('s1'), 30);
+  assert.equal(h.skill.has('s3'), false);
+  assert.equal(h.total, 30);
+});
+
+test('Без навыка · удаление навыка проекта («Перенести» и «Оставить без навыка») её не трогает', () => {
+  for (const mode of [{ kind: 'transfer', to: 's1' }, { kind: 'keep' }] as const) {
+    const patch = skillDeletionPatch(NS, 's3', mode);
+    assert.deepEqual(patch.tasks, []);                       // задачи со своим «без навыка» не в патче
+    const after = applySkillDeletion(NS, 's3', mode);
+    assert.equal(after.tasks.find((t) => t.id === 'ns')!.no_skill, true);
+    const p = skillDeletionPreview(NS, 's3', mode);
+    assert.equal(p.minutes, 30);                             // уходят только часы задачи «как у проекта»
+  }
+});
+
+test('Без навыка · часы квеста считаются по всем выполненным задачам проекта', () => {
+  const q = questCards(NS, '2026-11-13').cards.find((c) => c.id === 'pp')!;
+  assert.equal(q.minutes, 90);
+  assert.deepEqual(q.skills, [{ id: 's3', minutes: 30 }]);
+});

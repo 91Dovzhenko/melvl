@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { supabase } from './supabase';
 import { addDays, iso, todayISO } from './dates';
 import { repeatFirst, repeatNext, type RepeatRule } from './repeat';
+import { copiesCreatedSince } from './newTasks';
 import type { Area, Goal, GoalMeasurement, GoalStep, Project, Settings, Skill, TableName, Tables, Task } from './types';
 
 export type Data = {
@@ -48,8 +49,8 @@ export function useStore() {
   return s;
 }
 
-const DEFAULT_SETTINGS: Settings = { log_mode: 'manual', today_view: 'projects', last_auto_log: null, character_seen_at: null, tree_layout: null };
-const SETTINGS_COLS = 'log_mode,today_view,last_auto_log,character_seen_at,tree_layout';
+const DEFAULT_SETTINGS: Settings = { log_mode: 'manual', today_view: 'projects', last_auto_log: null, character_seen_at: null, tree_layout: null, today_ack_at: null };
+const SETTINGS_COLS = 'log_mode,today_view,last_auto_log,character_seen_at,tree_layout,today_ack_at';
 const TABLES = ['areas', 'projects', 'tasks', 'skills', 'goals', 'goal_steps', 'goal_measurements'] as const;
 
 const now = () => new Date().toISOString();
@@ -65,7 +66,10 @@ function defaults<T extends TableName>(table: T, row: Partial<Tables[T]>): Table
   if (table === 'tasks') return {
     ...base, project_id: null, area_id: null, title: '', notes: '', when_date: null, when_evening: false,
     someday: false, estimate_min: null, skill_id: null, deadline: null, status: 'open', completed_at: null,
-    logged_at: null, today_order: Date.now() / 1000, repeat_template_id: null, repeat_date: null, is_template: false, is_habit: false, created_at: now(), ...row,
+    logged_at: null, today_order: Date.now() / 1000, repeat_template_id: null, repeat_date: null, is_template: false, is_habit: false,
+    no_skill: false, new_seen_at: null, created_at: now(), ...row,
+    // Дата «Когда» поставлена сейчас (руками) — для правила «новых» (в базе то же делает триггер).
+    when_set_at: (row as Partial<Task>).when_set_at ?? ((row as Partial<Task>).when_date ? now() : null),
   } as Tables[T];
   if (table === 'goals') return {
     ...base, title: '', metric: '', start_value: 0, target_value: 0, criterion: '', calc: 'once', period_n: 3,
@@ -217,8 +221,8 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
   const applyRemote = (table: TableName | 'repeat_rules' | 'settings', type: string, row: Record<string, unknown>, old: Record<string, unknown>) => {
     if (table === 'settings') {
       if (type === 'DELETE' || pending.current.has('settings')) return;
-      const { log_mode, today_view, last_auto_log, character_seen_at, tree_layout } = row as Settings;
-      setData((d) => ({ ...d, settings: { log_mode, today_view, last_auto_log, character_seen_at, tree_layout } }));
+      const { log_mode, today_view, last_auto_log, character_seen_at, tree_layout, today_ack_at } = row as Settings;
+      setData((d) => ({ ...d, settings: { log_mode, today_view, last_auto_log, character_seen_at, tree_layout, today_ack_at } }));
       return;
     }
     if (table === 'repeat_rules') {
@@ -278,6 +282,10 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
       const before: Record<string, unknown> = {};
       for (const k of Object.keys(changes)) before[k] = (prev as Record<string, unknown>)[k];
       recorder.current.push({ kind: 'patch', table, id, prev: before });
+    }
+    // Сменили дату «Когда» — запоминаем момент (п. 9: поставлена руками сегодня — не «новая»).
+    if (table === 'tasks' && 'when_date' in changes && (changes as Partial<Task>).when_date !== (prev as Task).when_date && !('when_set_at' in changes)) {
+      (changes as Partial<Task>).when_set_at = (changes as Partial<Task>).when_date ? now() : null;
     }
     setTable(table, (rows) => rows.map((r) => (r.id === id ? { ...r, ...changes } : r)));
     // Отметили копию повтора «после выполнения» — в базе следующую дату ставит триггер; без входа — то же здесь.
@@ -369,8 +377,16 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
   }, [offline, toast, track]);
 
   const setRepeat = useCallback(async (taskId: string, r: RepeatInput) => {
+    // Копия, которую приложение создаёт сразу при включении повтора, — ручное действие, не «новая» (п. 9):
+    // ставим ей new_seen_at. Запас 30 с — на разницу часов устройства и базы.
+    const since = Date.now() - 30_000;
+    const seenAt = new Date().toISOString();
     if (!supabase || offline) {
-      setData((d) => generateLocal(setRuleLocal(d, taskId, r), todayISO()));
+      setData((d) => {
+        const next = generateLocal(setRuleLocal(d, taskId, r), todayISO());
+        const mark = new Set(copiesCreatedSince(next.tasks, taskId, since).map((t) => t.id));
+        return { ...next, tasks: next.tasks.map((t) => (mark.has(t.id) ? { ...t, new_seen_at: seenAt } : t)) };
+      });
       return;
     }
     const { error } = await supabase.rpc('set_repeat', {
@@ -378,6 +394,11 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
       p_month_day: r.month_day, p_start: r.start, p_end: r.end_date, p_today: todayISO(), p_habit: r.is_habit,
     });
     if (error) { console.error(error); toast('Повтор не сохранился — проверьте связь'); }
+    else {
+      const seen = await supabase.from('tasks').update({ new_seen_at: seenAt })
+        .eq('repeat_template_id', taskId).is('new_seen_at', null).gte('created_at', new Date(since).toISOString());
+      if (seen.error) console.warn('new_seen_at', seen.error.message);
+    }
     await load();
   }, [offline, load, toast]);
 
@@ -482,7 +503,9 @@ function generateLocal(d: Data, today: string): Data {
     if (!tasks.some((x) => x.repeat_template_id === t.id && x.repeat_date === nd)) {
       tasks = [...tasks, { ...t, id: crypto.randomUUID(), is_template: false, when_date: nd, someday: false,
         status: 'open', completed_at: null, logged_at: null, deadline: null, today_order: Date.now() / 1000,
-        repeat_template_id: t.id, repeat_date: nd, is_habit: r.is_habit, created_at: new Date().toISOString() }];
+        repeat_template_id: t.id, repeat_date: nd, is_habit: r.is_habit, created_at: new Date().toISOString(),
+        // no_skill — от шаблона (через ...t); дата копии поставлена сейчас, «видел» — нет (как в базе).
+        when_set_at: new Date().toISOString(), new_seen_at: null }];
     }
     let next: string | null = r.kind === 'after_completion' ? null : repeatNext(r.kind, r.every, r.weekdays, r.month_day, r.anchor_date, nd);
     if (next && r.end_date && next > r.end_date) next = null;

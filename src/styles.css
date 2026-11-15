@@ -1457,3 +1457,35 @@ a.nav2:hover { background: var(--chip-hover); }
 @media (max-width: 767px) { .step-toast { width: auto; } }
 .pgf-step .grip { touch-action: none; width: 32px; height: 44px; display: flex; align-items: center; justify-content: center; margin-left: -8px; cursor: grab; }
 .pgf-step.dragging { background: var(--accent-bg); border-radius: 12px; }
+
+/* ───────── Этап 2.1 (17_ТЗ, Спецификация, раздел 18) ───────── */
+.today-sq.evening { background: var(--dark); }
+.notes-view { white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; outline: none; }
+.note-link { color: var(--accent-dark); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px; cursor: pointer; }
+.note-link:hover { color: var(--text); }
+.prop-chip.no-skill { background: #FFFFFF; border: 1px dashed var(--checkbox); color: var(--text-muted); }
+.prop-chip.no-skill .sub { color: var(--icon-quiet); }
+.no-skill-note { margin: 0 0 0 33px; font-size: 13px; font-weight: 600; color: var(--text-muted); line-height: 1.4; }
+/* Строка задачи на Mac — одна строка (раздел 18) */
+.row.row-mac { position: relative; align-items: center; height: 28px; min-height: 28px; padding: 0 8px; }
+.row-mac .cb { margin-top: 0; }
+.row-mac .log-date { line-height: 28px; }
+.row-line.one { display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 500; line-height: 20px; flex: 1; min-width: 0; flex-wrap: nowrap; white-space: nowrap; }
+.row-line.one > * { flex-shrink: 0; }
+.row-title.one { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal; }
+.row-line.one .meta-ico { display: inline-flex; }
+.row-proj { margin-left: auto; padding-left: 12px; flex: 0 1 auto !important; min-width: 40px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; font-size: 12px; font-weight: 600; color: var(--icon-quiet); }
+.skill-hover { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; padding-left: 28px; pointer-events: none; opacity: 0; transition: opacity .12s ease; background: linear-gradient(90deg, rgba(247, 248, 245, 0) 0, #F7F8F5 26px); }
+.row-mac:hover .skill-hover { opacity: 1; }
+.row-mac.selected .skill-hover { background: linear-gradient(90deg, rgba(245, 251, 230, 0) 0, #F5FBE6 26px); }
+.skill-hover .skill-pill { line-height: 18px; }
+.new-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent-dark); box-shadow: 0 0 0 3px rgba(197, 242, 90, .75); margin: 0 2px; flex-shrink: 0; }
+/* Плашка «Новые задачи · N» над списком «Сегодня» (п. 9, раздел 18) */
+.new-banner { display: flex; align-items: center; gap: 10px; margin: 0; padding: 6px 6px 6px 14px; background: #F5FBE6; border: 1px solid #DCEFB0; border-radius: 14px; }
+.new-banner .new-dot { margin: 0 2px 0 0; }
+.new-banner-title { font-size: 14px; font-weight: 700; white-space: nowrap; }
+.new-banner-hint { font-size: 13px; font-weight: 600; color: #5F635C; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.new-banner-ok { margin-left: auto; height: 30px; padding: 0 16px; border: 0; border-radius: 10px; background: #15171A; color: #fff; font: inherit; font-size: 13px; font-weight: 800; cursor: pointer; flex-shrink: 0; }
+.new-banner.nb-phone .new-banner-title { font-size: 15px; }
+.new-banner.nb-phone .new-banner-ok { height: 36px; padding: 0 18px; border-radius: 12px; font-size: 15px; }
+.row-phone .lead .new-dot { margin: 0 2px; }

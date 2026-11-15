@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useStore } from '../lib/store';
-import { projectProgress, projectTasks } from '../lib/views';
+import { orderProjectTasks, projectProgress, projectTasks } from '../lib/views';
 import { TaskList } from '../tasks/TaskList';
 import { useNewTaskContext } from '../tasks/editing';
 import { Icon, Ring } from '../ui/icons';
@@ -28,7 +28,7 @@ export function ProjectScreen() {
   const [ask, setAsk] = useState(false);
   const p = store.projects.find((x) => x.id === id);
   const all = projectTasks(store, id);
-  const visible = all.filter((t) => !t.logged_at);
+  const visible = orderProjectTasks(all.filter((t) => !t.logged_at), store.tasks, store.rules, today);
   const logged = all.filter((t) => t.logged_at);
 
   // В проекте новая задача получает этот проект.

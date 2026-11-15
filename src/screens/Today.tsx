@@ -1,6 +1,6 @@
-import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useStore, useToday } from '../lib/store';
+import { isNewTask } from '../lib/newTasks';
 import { isListed, isToday, projectProgress, todayGroups, todaySums } from '../lib/views';
 import { TodaySumBlock } from '../ui/Sums';
 import { TaskList } from '../tasks/TaskList';
@@ -9,17 +9,15 @@ import { Icon, Ring } from '../ui/icons';
 import { useIsPhone } from '../ui/useIsPhone';
 import { BadgeHeader } from './parts';
 
-let sessionView: 'projects' | 'list' | null = null;
-
 export function Today() {
   const store = useStore();
   const today = useToday();
   const phone = useIsPhone();
   const ed = useEditing();
-  // Вид по умолчанию — из настроек; переключатель на экране меняет его только до перезапуска.
-  const [view, setView] = useState<'projects' | 'list' | null>(sessionView);
-  const flat = (view ?? store.settings.today_view) === 'list';
-  const choose = (v: 'projects' | 'list') => { sessionView = v; setView(v); };
+  // Вид хранится в настройках в базе (то же значение, что в Настройках → «Сегодня»): переживает перезапуск
+  // и синхронизируется Mac ↔ iPhone (п. 8, 17_ТЗ).
+  const flat = store.settings.today_view === 'list';
+  const choose = (v: 'projects' | 'list') => { if (v !== store.settings.today_view) store.patchSettings({ today_view: v }); };
   const groups = todayGroups(store, today, flat);
   const list = store.tasks.filter((t) => isListed(t) && isToday(t, today));
 
@@ -29,6 +27,10 @@ export function Today() {
     list,
     inheritFromSelected: ['project_id', 'area_id', 'when_evening'],
   });
+
+  // Плашка «Новые задачи · N» (п. 9): задачи, пришедшие сами; «OK» гасит все точки разом.
+  const newCount = list.filter((t) => isNewTask(t, today, store.settings.today_ack_at)).length;
+  const ack = () => store.patchSettings({ today_ack_at: new Date().toISOString() });
 
   const hasDraftTop = !!ed.draft && ed.draft.afterId === null;
   const firstIsNone = groups[0]?.kind === 'none';
@@ -47,6 +49,15 @@ export function Today() {
           <button type="button" aria-pressed={flat} onClick={() => choose('list')}>Списком</button>
         </div>
       </div>
+
+      {newCount > 0 && (
+        <div className={'new-banner' + (phone ? ' nb-phone' : '')} role="status">
+          <span className="new-dot" aria-hidden="true" />
+          <span className="new-banner-title">Новые задачи · {newCount}</span>
+          {!phone && <span className="new-banner-hint">пришли сами: наступила дата или копия повтора</span>}
+          <button type="button" className="new-banner-ok" onClick={ack}>OK</button>
+        </div>
+      )}
 
       {groups.length === 0 && !hasDraftTop ? (
         <div className="empty">
@@ -79,7 +90,7 @@ export function Today() {
                 </div>
               )}
               <TaskList tasks={g.tasks} draftHere={i === 0 && g.kind === 'none'}
-                mode={{ showProject: flat || g.kind === 'evening' }} />
+                mode={{ showProject: flat || g.kind === 'evening', newDots: true }} />
             </section>
           ))}
         </div>

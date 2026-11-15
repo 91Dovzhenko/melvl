@@ -23,6 +23,12 @@ export type Task = {
   is_template: boolean;
   /** Привычка: копия повтора-привычки (флажок наследуется от правила). */
   is_habit: boolean;
+  /** «Без навыка» явно (п. 7, 17_ТЗ): навык проекта не берётся, часов не даёт. При true skill_id пустой. */
+  no_skill: boolean;
+  /** Когда поставлена текущая дата «Когда» (п. 9: дата наступила сама или поставлена сегодня руками). */
+  when_set_at: string | null;
+  /** Когда задачу открыли — её точка «новая» гаснет. */
+  new_seen_at: string | null;
   created_at: string; deleted_at: string | null;
 };
 
@@ -70,6 +76,8 @@ export type Settings = {
   last_auto_log: string | null;
   /** Последнее открытие «Персонажа» — для точки-бейджа. */
   character_seen_at: string | null;
+  /** Когда нажали «OK» на плашке «Новые задачи». */
+  today_ack_at: string | null;
   tree_layout: TreeLayoutStore | null;
 };
 

@@ -152,23 +152,33 @@ function SkillGlyph({ skill, color = 'currentColor', size = 17 }: { skill: Skill
  * Окно «Навык»: по веткам Креатор / Профессия. Для задачи в проекте сверху «Как у проекта (…)» = навык не задан вручную.
  * Скрытый навык показывается внизу приглушённо, только если он уже выбран.
  */
-export function SkillPicker({ value, inherited, forProject, anchor, onPick, onClose }: {
+export function SkillPicker({ value, noSkill = false, inherited, forProject, anchor, onPick, onClose }: {
   value: string | null; inherited?: Skill; forProject?: boolean;
-  anchor: Anchor | null; onPick: (id: string | null) => void; onClose: () => void;
+  /** У задачи выбрано «Без навыка» явно (п. 7, 17_ТЗ). */
+  noSkill?: boolean;
+  /** id навыка или null; второй аргумент — «Без навыка» явно (только у задачи в проекте с навыком). */
+  anchor: Anchor | null; onPick: (id: string | null, noSkill?: boolean) => void; onClose: () => void;
 }) {
   const store = useStore();
-  const pick = (id: string | null) => { onClose(); onPick(id); };
+  const pick = (id: string | null, none = false) => { onClose(); onPick(id, none); };
+  const asProject = value === null && !noSkill;
   const skills = store.skills.filter((s) => !s.deleted_at).sort((a, b) => a.sort_order - b.sort_order);
   const branches: { key: Skill['branch']; name: string }[] = [{ key: 'creator', name: 'Креатор' }, { key: 'profession', name: 'Профессия' }];
   const current = skills.find((s) => s.id === value);
   return (
     <Pop anchor={anchor} onClose={onClose} title={forProject ? 'Навык по умолчанию' : 'Навык'} width={280}>
       {inherited && !forProject ? (
-        <button type="button" className={'pop-item' + (value === null ? ' selected' : '')} aria-pressed={value === null} onClick={() => pick(null)}>
-          <SkillGlyph skill={inherited} />
-          <span className="pop-label">Как у проекта <span style={{ color: '#B4B8B0', fontWeight: 600 }}>({inherited.name})</span></span>
-          {value === null && <Icon name="check" size={15} color="#C5F25A" width={2.4} />}
-        </button>
+        <>
+          <button type="button" className={'pop-item' + (asProject ? ' selected' : '')} aria-pressed={asProject} onClick={() => pick(null)}>
+            <SkillGlyph skill={inherited} />
+            <span className="pop-label">Как у проекта <span style={{ color: '#B4B8B0', fontWeight: 600 }}>({inherited.name})</span></span>
+            {asProject && <Icon name="check" size={15} color="#C5F25A" width={2.4} />}
+          </button>
+          {/* Задача проекта, которая к навыку проекта не относится: часов не даёт. */}
+          <PopItem icon="noSkill" label={<>Без навыка <span style={{ color: '#B4B8B0', fontWeight: 600 }}>· часов не даёт</span></>}
+            selected={noSkill} muted={!noSkill} onClick={() => pick(null, true)} />
+          <PopSep />
+        </>
       ) : (
         <PopItem icon="clear" label="Без навыка" muted={value !== null} selected={value === null} onClick={() => pick(null)} />
       )}

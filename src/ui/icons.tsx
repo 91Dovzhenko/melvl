@@ -30,6 +30,7 @@ export const ICONS = {
   more: 'M5 12h.01 M12 12h.01 M19 12h.01',
   settings: 'M4 7h9 M17 7h3 M4 17h3 M11 17h9 M15 5v4 M9 15v4',
   duplicate: 'M8 8h11v11H8z M5 16V5h11',
+  noSkill: 'M12 21a9 9 0 1 0 0-18a9 9 0 0 0 0 18z M5.6 5.6l12.8 12.8',
   grip: 'M9 6h.01 M15 6h.01 M9 12h.01 M15 12h.01 M9 18h.01 M15 18h.01',
   trash: 'M4 7h16 M9 7V4h6v3 M6 7l1 13h10l1-13',
   back: 'M15 6l-6 6 6 6',

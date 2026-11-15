@@ -10,6 +10,8 @@ import { describe } from '../lib/repeat';
 import type { Task } from '../lib/types';
 import { useEditing } from './editing';
 import { useIsPhone } from '../ui/useIsPhone';
+import { hasLink, LinkText } from '../ui/LinkText';
+import { isNewTask } from '../lib/newTasks';
 import { useTaskToggle } from '../growth/Moments';
 
 export type RowMode = {
@@ -21,6 +23,8 @@ export type RowMode = {
   alwaysSkill?: boolean;
   /** Журнал: колонка даты выполнения слева (12/800, ширина 58). */
   logDate?: (t: Task) => string;
+  /** «Сегодня»: показывать точку у новых задач (п. 9, 17_ТЗ). */
+  newDots?: boolean;
 };
 
 /** Список задач с выделением, раскрытием карточки и местом для новой задачи. */
@@ -68,6 +72,15 @@ function CheckboxInner({ task, size }: { task: Task; size: 'mac' | 'phone' }) {
   );
 }
 
+/** «Сегодня вечером» — тёмный квадрат с лаймовой луной (раздел 18): зеркало солнца «Сегодня». */
+function EveningSquare({ size = 18 }: { size?: number }) {
+  return (
+    <span className="today-sq evening" title="Сегодня вечером" style={{ width: size, height: size }}>
+      <Icon name="evening" size={Math.round(size * 0.61)} color="#C5F25A" width={2.4} />
+    </span>
+  );
+}
+
 function TodaySquare({ size = 18 }: { size?: number }) {
   return (
     <span className="today-sq" title="Сегодня" style={{ width: size, height: size }}>
@@ -86,6 +99,21 @@ export function TaskRow({ task, mode }: { task: Task; mode: RowMode }) {
   const sub = mode.showProject ? projectName(store, task.project_id) : '';
   const skill = skillOf(store, task).skill;
   const [menuAt, setMenuAt] = useState<{ x: number; y: number } | null>(null);
+  const isNew = !!mode.newDots && isNewTask(task, today, store.settings.today_ack_at);
+  const rowRef = useRef<HTMLDivElement>(null);
+  const titleRef = useRef<HTMLSpanElement>(null);
+  const projRef = useRef<HTMLSpanElement>(null);
+  const [chipRight, setChipRight] = useState(8);
+  // Навык при наведении (раздел 18): короткая строка — чип у правого края (или левее проекта),
+  // длинная (название обрезано) — сразу слева от иконок и оценки, поверх хвоста названия.
+  const placeSkill = () => {
+    const row = rowRef.current, title = titleRef.current;
+    if (!row || !title || !skill) return;
+    const r = row.getBoundingClientRect();
+    if (title.scrollWidth > title.clientWidth + 1) setChipRight(Math.round(r.right - title.getBoundingClientRect().right));
+    else if (projRef.current) setChipRight(Math.round(r.right - projRef.current.getBoundingClientRect().left + 7));
+    else setChipRight(8);
+  };
 
   let chip: React.ReactNode = null;
   if (mode.dueChips) {
@@ -97,8 +125,52 @@ export function TaskRow({ task, mode }: { task: Task; mode: RowMode }) {
         ? <span className="due-chip" title={rule?.next_date ? `Следующая копия: ${shortDate(rule.next_date)}` : 'Ждёт выполнения копии'}>Ожидание</span>
         : <span className="due-chip" title={`Следующая копия: ${shortDate(rule.next_date)}`}>{dueChip(rule.next_date, today)}</span>;
     } else if (task.someday) chip = <span className="due-chip">Когда-нибудь</span>;
-    else if (task.when_date && task.when_date <= today) chip = <TodaySquare />;
+    else if (task.when_date && task.when_date <= today) chip = task.when_evening ? <EveningSquare /> : <TodaySquare />;
     else if (task.when_date) chip = <span className="due-chip">{dueChip(task.when_date, today)}</span>;
+  } else if (task.when_evening && task.when_date && task.when_date <= today && !task.someday) {
+    // «Сегодня»: дневные без метки, вечерние — с луной.
+    chip = <EveningSquare />;
+  }
+
+  const rowEvents = {
+    onClick: () => (phone ? ed.open(task.id) : ed.select(task.id)),
+    onDoubleClick: () => ed.open(task.id),
+    onContextMenu: (e: React.MouseEvent) => {
+      if (phone) return;
+      e.preventDefault();
+      ed.select(task.id);
+      setMenuAt({ x: e.clientX, y: e.clientY });
+    },
+  };
+
+  if (!phone) {
+    // Mac (раздел 18): всегда одна строка высотой 28; название — многоточием; заметка, повтор, оценка — сразу за ним;
+    // проект в «Списком» / Планах / Журнале — серым справа; навык — только при наведении.
+    return (
+      <div ref={rowRef} className={'row row-mac' + (selected ? ' selected' : '')} onMouseEnter={placeSkill} {...rowEvents}>
+        {menuAt && <TaskContextMenu task={task} at={menuAt} onClose={() => setMenuAt(null)} />}
+        <Checkbox task={task} size="mac" />
+        {mode.logDate && <span className="log-date">{mode.logDate(task)}</span>}
+        <div className="row-line one" style={{ opacity: done ? (mode.logDate ? 0.55 : 0.42) : 1 }}>
+          {isNew && <span className="new-dot" role="img" aria-label="Новая задача" title="Новая — пришла в «Сегодня» сама" />}
+          {chip}
+          <span ref={titleRef} className="row-title one">{task.title || <span className="muted">Без названия</span>}</span>
+          {task.notes.trim() && <Icon name="note" size={13} color="#8E9289" width={1.9} />}
+          {(task.is_template || task.repeat_template_id) && (
+            <span className="meta-ico" role="img" aria-label={task.is_template ? 'Шаблон повтора' : 'Копия повтора'}>
+              <Icon name="repeat" size={13} color={task.is_template ? '#3D6A00' : '#8E9289'} width={1.9} />
+            </span>
+          )}
+          {task.estimate_min !== null && <span className="est">{fmtMin(task.estimate_min)}</span>}
+          {sub && <span ref={projRef} className="row-proj">{sub}</span>}
+        </div>
+        {skill && (
+          <span className="skill-hover" style={{ right: chipRight }} aria-hidden="true">
+            <span className="skill-pill"><SkillGlyph skill={skill} size={12} color="#3D6A00" />{skill.name}</span>
+          </span>
+        )}
+      </div>
+    );
   }
 
   return (
@@ -118,6 +190,7 @@ export function TaskRow({ task, mode }: { task: Task; mode: RowMode }) {
         {/* Одна строка текста, как в Things: метка срока перед названием, название переносится,
             иконки и оценка идут сразу за последним словом. */}
         <div className="row-line">
+          {isNew && <span className="lead"><span className="new-dot" role="img" aria-label="Новая задача" title="Новая — пришла в «Сегодня» сама" /></span>}
           {chip && <span className="lead">{chip}</span>}
           <span className="row-title">{task.title || <span className="muted">Без названия</span>}</span>
           {task.notes.trim() && <span className="trail icon"><Icon name="note" size={13} color="#8E9289" width={1.9} /></span>}
@@ -157,10 +230,29 @@ export function TaskCard({ task }: { task?: Task }) {
   const phone = useIsPhone();
   const [title, setTitle] = useState(task?.title ?? '');
   const [notes, setNotes] = useState(task?.notes ?? '');
+  const [notesEdit, setNotesEdit] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const notesRef = useRef<HTMLTextAreaElement>(null);
   const state = useRef({ title, notes });
+  // Задача ушла из списка, пока раскрыта (например, стала шаблоном повтора во «Входящих»), —
+  // закрываем правку, иначе на iPhone остаётся висеть нижняя панель без карточки.
+  const closeIfRef = useRef(ed.closeIf);
+  closeIfRef.current = ed.closeIf;
+  useEffect(() => {
+    const id = task?.id;
+    if (!id) return;
+    return () => {
+      requestAnimationFrame(() => {
+        if (!document.querySelector(`[data-card-id="${CSS.escape(id)}"]`)) closeIfRef.current(id);
+      });
+    };
+  }, [task?.id]);
+  // Открыли новую задачу — её точка в «Сегодня» гаснет (п. 9, 17_ТЗ).
+  useEffect(() => {
+    if (task && isNewTask(task, today, store.settings.today_ack_at)) store.patch('tasks', task.id, { new_seen_at: new Date().toISOString() });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task?.id]);
   state.current = { title, notes };
   const fields = task ?? (ed.draft?.fields as Partial<Task> | undefined) ?? {};
 
@@ -196,7 +288,7 @@ export function TaskCard({ task }: { task?: Task }) {
     el.focus();
     el.setSelectionRange(el.value.length, el.value.length);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  useLayoutEffect(() => { autosize(titleRef.current); autosize(notesRef.current); }, [title, notes]);
+  useLayoutEffect(() => { autosize(titleRef.current); autosize(notesRef.current); }, [title, notes, notesEdit]);
 
   // Esc / клик вне карточки — закрыть и сохранить.
   useEffect(() => {
@@ -218,9 +310,9 @@ export function TaskCard({ task }: { task?: Task }) {
   // Свойства: у сохранённой задачи — сразу в базу, у новой — в черновик.
   const set = (changes: Partial<Task>) => (task ? store.patch('tasks', task.id, changes) : ed.patchDraft(changes));
   const [pop, setPop] = useState<{ kind: PropKind; anchor: HTMLElement } | null>(null);
-  const [repeatOpen, setRepeatOpen] = useState(false);
+  const [repeatOpen, setRepeatOpen] = useState(() => !!task && ed.takePendingRepeat(task.id));
   const openPop = (kind: PropKind) => (e: React.MouseEvent<HTMLElement>) => setPop({ kind, anchor: e.currentTarget });
-  const sk = skillOf(store, { skill_id: fields.skill_id ?? null, project_id: fields.project_id ?? null });
+  const sk = skillOf(store, { skill_id: fields.skill_id ?? null, project_id: fields.project_id ?? null, no_skill: fields.no_skill });
   const inheritedSkill = skillOf(store, { skill_id: null, project_id: fields.project_id ?? null }).skill;
 
   const chips: { key: PropKind; cls?: string; label: string; node: React.ReactNode }[] = [];
@@ -230,7 +322,7 @@ export function TaskCard({ task }: { task?: Task }) {
     chips.push({
       key: 'when', label: 'Когда',
       node: isTodayDate
-        ? <><TodaySquare size={16} />{fields.when_evening ? 'Сегодня вечером' : 'Сегодня'}</>
+        ? (fields.when_evening ? <><EveningSquare size={phone ? 20 : 16} />Сегодня вечером</> : <><TodaySquare size={16} />Сегодня</>)
         : <><Icon name="when" size={14} color="#3E423C" width={1.9} />{fields.when_date === addDays(today, 1) ? 'Завтра' : shortDate(fields.when_date)}</>,
     });
   }
@@ -249,16 +341,22 @@ export function TaskCard({ task }: { task?: Task }) {
     key: 'skill', cls: 'skill', label: 'Навык',
     node: <><SkillGlyph skill={sk.skill} size={14} color="#3D6A00" />{sk.skill.name}{sk.inherited && <span className="sub">· из проекта</span>}</>,
   });
+  // «Без навыка» явно в проекте с навыком — серый пунктирный чип; в проекте без навыка чипа нет, как раньше.
+  const noSkillChip = !!fields.no_skill && !!inheritedSkill;
+  if (noSkillChip) chips.push({
+    key: 'skill', cls: 'no-skill', label: 'Навык',
+    node: <><Icon name="noSkill" size={14} color="#8E9289" width={1.9} />Без навыка{!phone && <span className="sub">· в проекте — {inheritedSkill!.name}</span>}</>,
+  });
   if (fields.project_id) chips.push({ key: 'proj', label: 'Проект', node: <><Icon name="project" size={14} color="#3E423C" width={1.9} />{projectName(store, fields.project_id)}</> });
 
   const unset: { key: PropKind; icon: IconName; label: string }[] = [];
   if (!fields.when_date && !fields.someday && !fields.is_template) unset.push({ key: 'when', icon: 'when', label: 'Когда' });
   if (fields.estimate_min == null) unset.push({ key: 'est', icon: 'estimate', label: 'Оценка' });
-  if (!sk.skill) unset.push({ key: 'skill', icon: 'skill', label: 'Навык' });
+  if (!sk.skill && !noSkillChip) unset.push({ key: 'skill', icon: 'skill', label: 'Навык' });
   if (!fields.project_id) unset.push({ key: 'proj', icon: 'project', label: 'Переместить в проект' });
 
   return (
-    <div className={'card' + (phone ? ' card-phone' : '')} ref={ref}>
+    <div className={'card' + (phone ? ' card-phone' : '')} ref={ref} data-card-id={task?.id}>
       <div className="card-head">
         {task ? <Checkbox task={task} size={phone ? 'phone' : 'mac'} /> : <span className={'cb' + (phone ? ' cb-phone' : '')} aria-hidden="true" />}
         <textarea ref={titleRef} className="card-title" rows={1} value={title} placeholder="Новая задача"
@@ -270,8 +368,16 @@ export function TaskCard({ task }: { task?: Task }) {
             if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); commitRef.current(); }
           }} />
       </div>
-      <textarea ref={notesRef} className="card-notes" rows={1} value={notes} placeholder="Заметки"
-        aria-label="Заметки" onChange={(e) => setNotes(e.target.value)} />
+      {/* Заметка с адресом — ссылками; клик по тексту — правка (п. 6, 17_ТЗ). */}
+      {!notesEdit && hasLink(notes) ? (
+        <div className="card-notes notes-view" role="button" tabIndex={0} aria-label="Заметки — изменить"
+          onClick={() => setNotesEdit(true)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); setNotesEdit(true); } }}>
+          <LinkText text={notes} />
+        </div>
+      ) : (
+        <textarea ref={notesRef} className="card-notes" rows={1} value={notes} placeholder="Заметки" autoFocus={notesEdit}
+          aria-label="Заметки" onChange={(e) => setNotes(e.target.value)} onBlur={() => setNotesEdit(false)} />
+      )}
       <div className="card-foot">
         <div className="card-chips">
           {chips.map((c) => (
@@ -286,9 +392,11 @@ export function TaskCard({ task }: { task?: Task }) {
             </button>
           ))}
           {!rule && (
-            <button type="button" className="prop-btn" aria-label="Повтор" title={task ? 'Повтор' : 'Повтор — после сохранения задачи'}
-              disabled={!task} onClick={() => setRepeatOpen(true)}>
-              <Icon name="repeat" size={17} color="#3E423C" />
+            // Новая задача: как только есть название — повтор доступен (задача сохраняется и открывается «Повторять»).
+            <button type="button" className="prop-btn" aria-label="Повтор" title={task || title.trim() ? 'Повтор' : 'Повтор — сначала название'}
+              disabled={!task && !title.trim()}
+              onClick={() => (task ? setRepeatOpen(true) : ed.saveDraftAndRepeat(state.current.title, state.current.notes))}>
+              <Icon name="repeat" size={17} color={!task && !title.trim() ? '#BFC3BA' : '#3E423C'} />
             </button>
           )}
           <button type="button" className="prop-btn" aria-label="Дедлайн" title="Дедлайн — этап 3" disabled>
@@ -296,6 +404,9 @@ export function TaskCard({ task }: { task?: Task }) {
           </button>
         </div>
       </div>
+      {noSkillChip && phone && (
+        <p className="no-skill-note">В проекте навык «{inheritedSkill!.name}», но эта задача — без навыка: часов не даёт.</p>
+      )}
       {pop?.kind === 'when' && (
         <WhenPicker anchor={pop.anchor} onClose={() => setPop(null)} onPick={set}
           value={{ when_date: fields.when_date ?? null, when_evening: !!fields.when_evening, someday: !!fields.someday }} />
@@ -305,8 +416,8 @@ export function TaskCard({ task }: { task?: Task }) {
           onPick={(v) => set({ estimate_min: v })} />
       )}
       {pop?.kind === 'skill' && (
-        <SkillPicker anchor={pop.anchor} onClose={() => setPop(null)} value={fields.skill_id ?? null} inherited={inheritedSkill}
-          onPick={(id) => set({ skill_id: id })} />
+        <SkillPicker anchor={pop.anchor} onClose={() => setPop(null)} value={fields.skill_id ?? null} noSkill={!!fields.no_skill} inherited={inheritedSkill}
+          onPick={(id, none) => set({ skill_id: id, no_skill: !!none })} />
       )}
       {pop?.kind === 'repeat' && task && <RepeatDialog task={task} onClose={() => setPop(null)} />}
       {repeatOpen && task && <RepeatDialog task={task} onClose={() => setRepeatOpen(false)} />}

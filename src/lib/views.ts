@@ -55,6 +55,37 @@ export function projectTasks(d: Pick<Data, 'tasks'>, projectId: string) {
   return d.tasks.filter((t) => t.project_id === projectId && !t.deleted_at && t.status !== 'canceled').sort(byOrder);
 }
 
+type RuleLite = { task_id: string; next_date: string | null };
+
+/**
+ * Порядок задач в проекте (п. 3, 17_ТЗ), сверху вниз:
+ * 1) «Сегодня» (и просроченные) — сначала дневные, потом «Вечером»;
+ * 2) без даты;
+ * 3) будущее по дате, ближайшие выше, вместе с шаблонами повторов по дате следующей копии;
+ * 4) «Ожидание» — шаблоны, у которых открыта копия (или нет следующей даты), по дате следующей копии;
+ * 5) «Когда-нибудь» — в самом низу, как в Things (в ТЗ не названо — решение при сборке).
+ * Внутри группы и одной даты — по созданию (ручной порядок — этап 3).
+ */
+export function orderProjectTasks(list: Task[], all: Task[], rules: RuleLite[], today: string): Task[] {
+  const next = new Map(rules.map((r) => [r.task_id, r.next_date]));
+  const openCopy = new Set(all.filter((c) => c.repeat_template_id && c.status === 'open' && !c.deleted_at && !c.logged_at).map((c) => c.repeat_template_id!));
+  const key = (t: Task): [number, string] => {
+    if (t.is_template) {
+      const nd = next.get(t.id) ?? null;
+      if (openCopy.has(t.id) || !nd) return [5, nd ?? '9999-12-31'];
+      return [3, nd];
+    }
+    if (t.someday) return [6, ''];
+    if (!t.when_date) return [2, ''];
+    if (t.when_date <= today) return [t.when_evening ? 1.5 : 1, ''];
+    return [3, t.when_date];
+  };
+  return [...list].sort((a, b) => {
+    const [ga, da] = key(a), [gb, db] = key(b);
+    return ga - gb || (da < db ? -1 : da > db ? 1 : 0) || (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0) || a.sort_order - b.sort_order;
+  });
+}
+
 /** Доля выполненных задач проекта от всех (без отменённых и удалённых). */
 export function projectProgress(d: Pick<Data, 'tasks'>, projectId: string) {
   const own = d.tasks.filter((t) => t.project_id === projectId && !t.deleted_at && t.status !== 'canceled' && !t.is_template);
@@ -84,8 +115,10 @@ export function orderAfter(list: Task[], after: Task | undefined, key: 'sort_ord
 }
 
 /** Навык задачи: свой или «из проекта» (если у задачи не задан, а у проекта есть навык по умолчанию). */
-export function skillOf(d: Pick<Data, 'skills' | 'projects'>, t: Pick<Task, 'skill_id' | 'project_id'>) {
+export function skillOf(d: Pick<Data, 'skills' | 'projects'>, t: Pick<Task, 'skill_id' | 'project_id'> & { no_skill?: boolean }) {
   if (t.skill_id) return { skill: d.skills.find((s) => s.id === t.skill_id), inherited: false };
+  // «Без навыка» явно (п. 7, 17_ТЗ): навык проекта не берётся.
+  if (t.no_skill) return { skill: undefined, inherited: false };
   const p = t.project_id ? d.projects.find((x) => x.id === t.project_id) : undefined;
   const skill = p?.default_skill_id ? d.skills.find((s) => s.id === p.default_skill_id) : undefined;
   return { skill, inherited: !!skill };

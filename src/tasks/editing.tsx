@@ -23,8 +23,15 @@ type Editing = {
   select: (id: string | null) => void;
   open: (id: string) => void;
   close: () => void;
+  /** Закрыть, только если раскрыта именно эта задача. */
+  closeIf: (id: string) => void;
   requestNew: () => void;
-  saveDraft: (title: string, notes: string) => void;
+  /** Сохранить новую задачу; возвращает её (пустая не создаётся — null). */
+  saveDraft: (title: string, notes: string) => Task | null;
+  /** Новую задачу — сохранить, раскрыть как обычную и сразу открыть «Повторять» (п. 1, 17_ТЗ). */
+  saveDraftAndRepeat: (title: string, notes: string) => void;
+  /** Задача, у которой при раскрытии нужно открыть «Повторять»; карточка забирает флажок один раз. */
+  takePendingRepeat: (id: string) => boolean;
   /** Поменять свойства новой (ещё не сохранённой) задачи. */
   patchDraft: (changes: Partial<Task>) => void;
   register: (ctx: NewTaskContext | null) => void;
@@ -69,26 +76,42 @@ export function EditingProvider({ children }: { children: React.ReactNode }) {
   const draftRef = useRef(draft);
   draftRef.current = draft;
   const { insert } = store;
-  const saveDraft = useCallback((title: string, notes: string) => {
+  const saveDraft = useCallback((title: string, notes: string): Task | null => {
     const d = draftRef.current;
-    if (!d) return;
+    if (!d) return null;
     draftRef.current = null;
     setDraft(null);
     // Пустая новая задача при закрытии не создаётся.
     if (title.trim() || notes.trim()) {
       const t = insert('tasks', { ...d.fields, title: title.trim(), notes });
       setSelected(t.id);
+      return t;
     }
+    return null;
   }, [insert]);
+  const pendingRepeat = useRef<string | null>(null);
+  const saveDraftAndRepeat = useCallback((title: string, notes: string) => {
+    const t = saveDraft(title, notes);
+    if (!t) return;
+    pendingRepeat.current = t.id;
+    setSelected(t.id);
+    setEditing(t.id);
+  }, [saveDraft]);
+  const takePendingRepeat = useCallback((id: string) => {
+    if (pendingRepeat.current !== id) return false;
+    pendingRepeat.current = null;
+    return true;
+  }, []);
 
   const value = useMemo<Editing>(() => ({
     selectedId, editingId, draft,
     select: (id) => setSelected(id),
     open: (id) => { setDraft(null); setSelected(id); setEditing(id); },
     close: () => setEditing(null),
-    requestNew, saveDraft, register, setCommit, commitOpen,
+    closeIf: (id) => setEditing((cur) => (cur === id ? null : cur)),
+    requestNew, saveDraft, saveDraftAndRepeat, takePendingRepeat, register, setCommit, commitOpen,
     patchDraft: (changes) => setDraft((d) => (d ? { ...d, fields: { ...d.fields, ...changes } } : d)),
-  }), [selectedId, editingId, draft, requestNew, saveDraft, register, setCommit, commitOpen]);
+  }), [selectedId, editingId, draft, requestNew, saveDraft, saveDraftAndRepeat, takePendingRepeat, register, setCommit, commitOpen]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
