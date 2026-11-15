@@ -9,8 +9,7 @@ import { useIsPhone } from '../ui/useIsPhone';
 
 export type DragKind = 'task' | 'project' | 'area';
 export type DragItem = { kind: DragKind; id: string };
-/** list — открыть место в другом списке (вечерняя над чужой дневной группой → конец группы своего проекта). */
-export type SlotResult = { index: number; valid: boolean; hint?: string; list?: string } | null;
+export type SlotResult = { index: number; valid: boolean } | null;
 
 export type ListSpec = {
   kind: DragKind;
@@ -36,10 +35,7 @@ type View = {
   over: Over | null;
   nav: string | null;
   faded: boolean;
-  hint: string | null;
   narrow: boolean;
-  /** Место открыто не там, где курсор, — список-цель подсвечивается целиком. */
-  redirect: boolean;
 };
 
 type Api = {
@@ -82,11 +78,11 @@ export function DndProvider({ children }: { children: React.ReactNode }) {
   const setView = useCallback((v: View | null) => {
     const p = viewRef.current;
     // Без лишних перерисовок: курсор двигается постоянно, а место и цель меняются редко.
-    if (p && v && p.item === v.item && p.nav === v.nav && p.faded === v.faded && p.hint === v.hint && p.narrow === v.narrow && p.redirect === v.redirect
+    if (p && v && p.item === v.item && p.nav === v.nav && p.faded === v.faded && p.narrow === v.narrow
       && p.over?.list === v.over?.list && p.over?.index === v.over?.index && p.origin === v.origin) return;
     viewRef.current = v; setViewState(v);
   }, []);
-  const hintRef = useRef<HTMLDivElement>(null);
+
 
   const register = useCallback((id: string, spec: React.MutableRefObject<ListSpec>, el: React.RefObject<HTMLElement | null>) => {
     lists.current.set(id, { spec, el });
@@ -98,7 +94,6 @@ export function DndProvider({ children }: { children: React.ReactNode }) {
     const d = live.current, c = copyRef.current;
     if (!d || !c) return;
     c.style.transform = `translate(${d.x - (viewRef.current?.narrow ? Math.min(d.ox, 40) : d.ox)}px, ${d.y - d.oy}px)`;
-    if (hintRef.current) hintRef.current.style.transform = `translate(${d.x + 14}px, ${d.y + 18}px)`;
   };
 
   /** Строки списка (без перетаскиваемой), сверху вниз. */
@@ -116,7 +111,7 @@ export function DndProvider({ children }: { children: React.ReactNode }) {
       const hit = (document.elementFromPoint(x, y) as HTMLElement | null)?.closest<HTMLElement>('[data-drop-nav]');
       const key = hit?.dataset.dropNav ?? null;
       const ok = !!key && !!navRef.current?.accepts(item.id, key);
-      setView({ ...v, over: null, nav: ok ? key : null, faded: !ok, hint: null, narrow: true, redirect: false });
+      setView({ ...v, over: null, nav: ok ? key : null, faded: !ok, narrow: true });
       return;
     }
     // Список того же рода под курсором (самый вложенный).
@@ -130,11 +125,9 @@ export function DndProvider({ children }: { children: React.ReactNode }) {
       const area = r.width * r.height;
       if (!best || area < best.area) best = { id, el: node, spec: spec.current, area };
     }
-    // Место открыто в чужой группе (подсветка сдвигает раскладку): пока курсор между группами — состояние не меняем.
-    if (!best && v.redirect) return;
     if (!best) {
       // Шапка, пустое поле: копия бледнее, плашка остаётся где была; отпустил — возврат.
-      setView({ ...v, nav: null, faded: true, hint: null, narrow: false, redirect: false, over: v.over ?? v.origin });
+      setView({ ...v, nav: null, faded: true, narrow: false, over: v.over ?? v.origin });
       return;
     }
     const rows = rowsOf(best.el, item.id);
@@ -146,15 +139,12 @@ export function DndProvider({ children }: { children: React.ReactNode }) {
     if (head && best.el.contains(head)) desired = rows.length;
     const res = best.spec.resolve(item, desired, others);
     if (!res) {
-      setView({ ...v, nav: null, faded: true, hint: null, narrow: false, redirect: false, over: v.over ?? v.origin });
+      setView({ ...v, nav: null, faded: true, narrow: false, over: v.over ?? v.origin });
       return;
     }
-    // Курсор съехал в подсвеченную группу на то же место — оставляем подсветку, чтобы не мигала.
-    if (v.redirect && v.over && best.id === v.over.list && res.index === v.over.index && !res.list) return;
-    const redirect = !!res.list && res.list !== best.id;
-    const over = { list: res.list ?? best.id, index: res.index };
+    const over = { list: best.id, index: res.index };
     const same = v.over && v.over.list === over.list && v.over.index === over.index;
-    setView({ ...v, nav: null, narrow: false, faded: !res.valid, hint: res.hint ?? null, redirect, over: same ? v.over : over });
+    setView({ ...v, nav: null, narrow: false, faded: !res.valid, over: same ? v.over : over });
   };
 
   // Автопрокрутка у края списка: ближе к краю — быстрее.
@@ -207,7 +197,7 @@ export function DndProvider({ children }: { children: React.ReactNode }) {
     const v = viewRef.current;
     if (!v) { cleanup(); return; }
     // Плашка встаёт на исходное место, копия едет туда.
-    setView({ ...v, over: v.origin, nav: null, faded: false, hint: null, narrow: false, redirect: false });
+    setView({ ...v, over: v.origin, nav: null, faded: false, narrow: false });
     nextFrame(() => settle(slotRect(), T.back, cleanup));
   };
 
@@ -244,7 +234,7 @@ export function DndProvider({ children }: { children: React.ReactNode }) {
       const entry = lists.current.get(d.list);
       const index = Math.max(0, entry?.spec.current.ids.indexOf(d.item.id) ?? 0);
       const origin = { list: d.list, index };
-      setView({ item: d.item, origin, over: origin, nav: null, faded: false, hint: null, narrow: false, redirect: false });
+      setView({ item: d.item, origin, over: origin, nav: null, faded: false, narrow: false });
       raf.current = requestAnimationFrame(scrollLoop);
     }
     if (d.phase !== 'drag') return;
@@ -312,7 +302,6 @@ export function DndProvider({ children }: { children: React.ReactNode }) {
       {view && createPortal(
         <div className="dnd-layer" aria-hidden="true">
           <div ref={copyRef} className={'dnd-copy' + (view.narrow ? ' narrow' : '') + (view.item.kind !== 'task' ? ' nav' : '')} />
-          {view.hint && <div ref={hintRef} className="dnd-hint">{view.hint}</div>}
         </div>,
         document.body,
       )}

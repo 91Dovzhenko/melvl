@@ -66,15 +66,16 @@ test('Проект · группы: сегодня / вечер / без дат�
   assert.deepEqual(orderProjectTasks(list, list, [], T).map((t) => t.id), ['new', 'old']);
 });
 
-test('«Сегодня» · по проектам — только своя группа или «Вечером»; «Списком» — свободно', () => {
-  assert.deepEqual(todayDrop('p1', 'p1', 'p1'), { ok: true, evening: false, key: 'sort_order' });
-  assert.deepEqual(todayDrop('p1', 'p2', 'p1'), { ok: false });                        // в чужой проект — нельзя
-  assert.deepEqual(todayDrop('p1', 'evening', 'p1'), { ok: true, evening: true, key: 'today_order' });
-  assert.deepEqual(todayDrop('evening', 'p1', 'p1'), { ok: true, evening: false, key: 'sort_order' }); // обратно в дневные
-  // Вечерняя — в любую дневную группу: станет дневной, встанет в группу своего проекта (порядок не меняется).
-  assert.deepEqual(todayDrop('evening', 'p2', 'p1'), { ok: true, evening: false, key: null });
-  assert.deepEqual(todayDrop('day', 'p2', 'p1'), { ok: false });
-  assert.deepEqual(todayDrop('flat', 'flat', 'flat'), { ok: true, evening: false, key: 'today_order' });
+test('«Сегодня» · по проектам: своя группа — порядок; другая группа — перенос туда; «Вечером»; «Списком» — свободно (19_ТЗ, 6.2)', () => {
+  assert.deepEqual(todayDrop('day', 'p1', 'p1'), { ok: true, evening: false, key: 'sort_order' });
+  // В группу другого проекта (области, «без проекта») — задача переезжает туда.
+  assert.deepEqual(todayDrop('day', 'p2', 'p1'), { ok: true, evening: false, key: 'sort_order', moveTo: 'p2' });
+  assert.deepEqual(todayDrop('day', 'none', 'p1'), { ok: true, evening: false, key: 'sort_order', moveTo: 'none' });
+  assert.deepEqual(todayDrop('day', 'evening', 'p1'), { ok: true, evening: true, key: 'today_order' });
+  // Вечерняя: в группу своего проекта — дневная; в группу проекта X — дневная и переезжает в X.
+  assert.deepEqual(todayDrop('evening', 'p1', 'p1'), { ok: true, evening: false, key: 'sort_order' });
+  assert.deepEqual(todayDrop('evening', 'p2', 'p1'), { ok: true, evening: false, key: 'sort_order', moveTo: 'p2' });
+  assert.deepEqual(todayDrop('day', 'flat', 'flat'), { ok: true, evening: false, key: 'today_order' });
   assert.deepEqual(todayDrop('evening', 'flat', 'flat'), { ok: true, evening: false, key: 'today_order' });
 });
 

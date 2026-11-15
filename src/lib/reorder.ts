@@ -50,21 +50,22 @@ export function resolveSlot(groups: string[], own: string, desired: number, orig
 /** Списки «Сегодня»: ключ группы — проект, область, 'none' (без проекта), 'flat' («Списком»), 'evening'. */
 export type TodayDrop =
   | { ok: false }
-  | { ok: true; evening: boolean; key: 'sort_order' | 'today_order' | null };
+  | { ok: true; evening: boolean; key: 'sort_order' | 'today_order'; moveTo?: string };
 
 /**
  * «Сегодня» (19_ТЗ, 2.1): из какой группы в какую можно и что меняется.
  * from — группа, где задача сейчас; to — группа под курсором; home — «своя» дневная группа задачи
  * (проект, область или 'none'; в «Списком» — 'flat').
  * По проектам порядок внутри дневной группы — общий с проектом (sort_order); «Вечером» и «Списком» — свой (today_order).
- * Вечернюю можно бросить в любую дневную группу (решение 15 нояб.): она станет дневной и встанет в группу
- * своего проекта — порядок тогда не меняется (key: null).
+ * Бросок в дневную группу другого проекта (области, «без проекта») переносит задачу туда (19_ТЗ, 6.2):
+ * moveTo — ключ группы-цели; вечерняя при этом становится дневной.
  */
 export function todayDrop(from: string, to: string, home: string): TodayDrop {
+  void from;
   if (to === 'evening') return { ok: true, evening: true, key: 'today_order' };
-  if (to === home) return { ok: true, evening: false, key: to === 'flat' ? 'today_order' : 'sort_order' };
-  if (from === 'evening') return { ok: true, evening: false, key: null };
-  return { ok: false };
+  if (to === 'flat') return { ok: true, evening: false, key: 'today_order' };
+  if (to === home) return { ok: true, evening: false, key: 'sort_order' };
+  return { ok: true, evening: false, key: 'sort_order', moveTo: to };
 }
 
 /** Что произойдёт с задачей, брошенной на пункт бокового меню; null — ничего не меняется. */

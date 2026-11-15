@@ -1,8 +1,7 @@
 // Что делает бросок задачи в каждом списке (19_ТЗ, 2.1). Правила — в lib/reorder.ts (с тестами).
 import { useStore, useToday } from '../lib/store';
-import { dueChip } from '../lib/dates';
 import { placeAt, resolveSlot, todayDrop } from '../lib/reorder';
-import { PROJECT_GROUP_LABEL, projectGroupMaps, projectGroupOf } from '../lib/views';
+import { projectGroupMaps, projectGroupOf } from '../lib/views';
 import type { Task } from '../lib/types';
 import type { ListDrag } from './TaskList';
 
@@ -42,15 +41,13 @@ export function useTaskDrops() {
     project(projectId: string): ListDrag {
       const { next, openCopy } = projectGroupMaps(store.tasks, store.rules);
       const group = (id: string) => { const t = byId(id); return t ? projectGroupOf(t, next, openCopy, today).key : ''; };
-      const label = (key: string) => key.startsWith('date:') ? dueChip(key.slice(5), today) : PROJECT_GROUP_LABEL[key] ?? '';
       return {
         id: 'project:' + projectId,
         resolve: (item, desired, others) => {
           const own = group(item.id);
           const groups = others.map(group);
           const origin = originIndex(groups, own);
-          const r = resolveSlot(groups, own, desired, origin);
-          return { ...r, hint: r.valid ? undefined : `Дата не меняется — задача вернётся к «${label(own)}»` };
+          return resolveSlot(groups, own, desired, origin);
         },
         drop: (item, index, others) => place(item.id, others, index, 'sort_order'),
       };
@@ -60,29 +57,18 @@ export function useTaskDrops() {
      * «Сегодня»: список группы group ('flat', 'evening', проект, область, 'none').
      * homeOf — своя дневная группа задачи (для вечерней — группа её проекта).
      */
-    today(group: string, homeOf: (id: string) => string, groupOf: (key: string) => { name: string; ids: string[] } | null): ListDrag {
+    today(group: string, homeOf: (id: string) => string, placeOfGroup: (key: string) => { project_id: string | null; area_id: string | null } | null): ListDrag {
       return {
         id: 'today:' + group,
-        resolve: (item, desired) => {
-          const r = todayDrop(fromOf(item.id), group, homeOf(item.id));
-          if (!r.ok) return null;
-          if (r.key) return { index: desired, valid: true };
-          // Вечерняя над чужой дневной группой: место — в конце группы своего проекта (она подсвечена), подсказка у курсора.
-          const home = homeOf(item.id);
-          const g = groupOf(home);
-          const t = byId(item.id);
-          const name = g?.name ?? (t?.project_id ? store.projects.find((p) => p.id === t.project_id)?.name : t?.area_id ? store.areas.find((a) => a.id === t.area_id)?.name : '') ?? '';
-          const hint = name ? `Встанет в «${name}» — станет дневной` : 'Встанет к задачам без проекта — станет дневной';
-          if (!g) return { index: desired, valid: true, hint };
-          return { index: g.ids.filter((id) => id !== item.id).length, valid: true, hint, list: 'today:' + home };
-        },
+        resolve: (_item, desired) => ({ index: desired, valid: true }),
         drop: (item, index, others) => {
           const r = todayDrop(fromOf(item.id), group, homeOf(item.id));
           if (!r.ok) return;
-          const msg = r.evening ? 'Задача — на вечер' : 'Задача — в дневные';
-          // Вечерняя в чужую дневную группу: становится дневной и встаёт в группу своего проекта.
-          if (!r.key) { store.withUndo(msg, () => store.patch('tasks', item.id, { when_evening: false })); return; }
-          place(item.id, others, index, r.key, { when_evening: r.evening }, msg);
+          // В группу другого проекта / области / «без проекта» — задача переезжает туда (дата та же, навык — по правилам переноса).
+          const to = r.moveTo ? placeOfGroup(r.moveTo) : null;
+          if (r.moveTo && !to) return;
+          const msg = to ? 'Задача перемещена' : r.evening ? 'Задача — на вечер' : 'Задача — в дневные';
+          place(item.id, others, index, r.key, { when_evening: r.evening, ...(to ?? {}) }, msg);
         },
       };
     },

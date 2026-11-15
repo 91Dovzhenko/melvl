@@ -111,8 +111,8 @@ export function TaskRow({ task, mode, dragList }: { task: Task; mode: RowMode; d
   const sub = mode.showProject ? projectName(store, task.project_id) : '';
   const skill = skillOf(store, task).skill;
   const [menuAt, setMenuAt] = useState<{ x: number; y: number } | null>(null);
-  // Тянуть можно открытые задачи (выполненные — нет), только на Mac и только в списке с перетаскиванием.
-  const startDrag = useDragSource(dragList && task.status === 'open' ? { kind: 'task', id: task.id } : null, dragList ?? '');
+  // Тянуть можно и открытые, и выполненные (19_ТЗ, 6.1) — только на Mac и только в списке с перетаскиванием (в Журнале его нет).
+  const startDrag = useDragSource(dragList ? { kind: 'task', id: task.id } : null, dragList ?? '');
   const isNew = !!mode.newDots && isNewTask(task, today, store.settings.today_ack_at);
   const rowRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLSpanElement>(null);

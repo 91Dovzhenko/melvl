@@ -24,14 +24,18 @@ export function Today() {
   const drops = useTaskDrops();
   // Своя дневная группа задачи (19_ТЗ): дневная — где она сейчас; вечерняя — группа её проекта (области, «без проекта»).
   const dayGroupOf = new Map(groups.filter((g) => g.kind !== 'evening').flatMap((g) => g.tasks.map((t) => [t.id, g.key] as const)));
-  const groupOf = (key: string) => {
+  // Куда переезжает задача, брошенная в дневную группу (19_ТЗ, 6.2): проект, область или «без проекта».
+  const placeOfGroup = (key: string) => {
     const g = groups.find((x) => x.key === key && x.kind !== 'evening');
     if (!g) return null;
-    return { name: g.kind === 'project' ? g.project?.name || 'Новый проект' : g.kind === 'area' ? g.area?.name || 'Новая область' : '', ids: g.tasks.map((t) => t.id) };
+    if (g.kind === 'project') return { project_id: g.project!.id, area_id: null };
+    if (g.kind === 'area') return { project_id: null, area_id: g.area!.id };
+    return { project_id: null, area_id: null };
   };
-  // Вечернюю тянут над чужой дневной группой — группа её проекта подсвечена целиком (как день-цель в «Планах»).
+  // Группа-цель подсвечена, когда бросок переносит задачу в другую дневную группу (другой проект или из «Вечером»).
   const dv = useDnd()?.view;
-  const targetGroup = dv?.redirect && dv.over ? dv.over.list.replace(/^today:/, '') : null;
+  const targetGroup = !flat && dv?.over && !dv.faded && dv.over.list !== dv.origin.list && dv.over.list !== 'today:evening'
+    ? dv.over.list.replace(/^today:/, '') : null;
   const homeOf = (id: string) => {
     if (flat) return 'flat';
     const known = dayGroupOf.get(id);
@@ -89,7 +93,7 @@ export function Today() {
         <div className="groups">
           {hasDraftTop && !firstIsNone && <TaskList tasks={[]} draftHere />}
           {groups.map((g, i) => (
-            <section className={'group' + (targetGroup === g.key ? ' drop-day' : '')} key={g.key}>
+            <section className={'group' + (targetGroup === g.key ? ' drop-group' : '')} key={g.key}>
               {g.kind === 'project' && g.project && (
                 <div className="group-head">
                   <Ring size={18} progress={projectProgress(store, g.project.id)} done={g.project.status === 'completed'} />
@@ -110,7 +114,7 @@ export function Today() {
                 </div>
               )}
               <TaskList tasks={g.tasks} draftHere={i === 0 && g.kind === 'none'}
-                mode={{ showProject: flat || g.kind === 'evening', newDots: true }} drag={drops.today(g.key, homeOf, groupOf)} />
+                mode={{ showProject: flat || g.kind === 'evening', newDots: true }} drag={drops.today(g.key, homeOf, placeOfGroup)} />
             </section>
           ))}
         </div>
