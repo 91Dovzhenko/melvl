@@ -16,6 +16,7 @@ import { SettingsScreen } from './screens/Settings';
 import { CharacterScreen } from './screens/Character';
 import { ChapterScreen, ChaptersScreen } from './screens/Chapters';
 import { GoalScreen, GoalsScreen } from './screens/Goals';
+import { TimeScreen } from './screens/time/TimeScreen';
 import { MomentsProvider } from './growth/Moments';
 import { AccountProvider } from './lib/account';
 import { Sidebar, useCreateList } from './shell/Sidebar';
@@ -128,10 +129,12 @@ const ROUTES = [
   <Route key="chapter" path="/chapters/:n" element={<ChapterScreen />} />,
   <Route key="goals" path="/goals" element={<GoalsScreen />} />,
   <Route key="goal" path="/goals/:id" element={<GoalScreen />} />,
+  <Route key="time" path="/time" element={<TimeScreen />} />,
+  <Route key="time-tab" path="/time/:tab" element={<TimeScreen />} />,
 ];
 
 // Разделы роста — без панели задач внизу (как на холсте).
-const GROWTH_PAGE = /^\/(character|chapters|goals)(\/|$)/;
+const GROWTH_PAGE = /^\/(character|chapters|goals|time)(\/|$)/;
 
 
 /**

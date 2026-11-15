@@ -1,6 +1,8 @@
 import { addDays, todayISO } from './dates';
 import type { Data } from './store';
 import type { Goal, GoalMeasurement, GoalStep, Task } from './types';
+import type { SlotValue, TimeCategory, TimeDirection, TimeSlot, TimeStage } from './time/types';
+import { dayAdd, mskNow, weekStartOf } from './time/clock';
 
 // Выдуманные данные для локального просмотра (?preview). Реальных задач здесь быть не должно.
 const t = todayISO();
@@ -64,7 +66,68 @@ const meas = (goal_id: string, i: number, daysAgo: number, value: number): GoalM
   id: `${goal_id}m${i}`, goal_id, date: addDays(t, -daysAgo), value, comment: '', deleted_at: null,
 });
 
+// ── Учёт времени: выдуманный справочник и две недели отметок ──
+const tc = (id: string, name: string, color: string, sort: number, o: Partial<TimeCategory> = {}): TimeCategory =>
+  ({ id, name, color, status: 'active', sort_order: sort, deleted_at: null, ...o });
+const td = (id: string, category_id: string, name: string, sort: number, o: Partial<TimeDirection> = {}): TimeDirection =>
+  ({ id, category_id, name, status: 'active', norm_type: 'none', norm_min: 0, area_id: null, sort_order: sort, deleted_at: null, ...o });
+const ts = (id: string, direction_id: string, name: string, sort: number): TimeStage =>
+  ({ id, direction_id, name, status: 'active', sort_order: sort, deleted_at: null });
+const TIME_CATS = [
+  tc('c1', 'Сон', 'violet', 1), tc('c2', 'Личное', 'sky', 2), tc('c3', 'Блог', 'apricot', 3), tc('c4', 'Дом', 'sage', 4),
+  tc('c5', 'Обучение', 'ochre', 5), tc('c6', 'Спорт', 'terracotta', 6), tc('c7', 'Работа', 'blue', 7), tc('c8', 'Потери', 'rose', 8),
+];
+const TIME_DIRS = [
+  td('d1', 'c7', 'Основной проект', 1, { norm_type: 'daily', norm_min: 360, area_id: 'a1' }),
+  td('d2', 'c7', 'Консалтинг', 2, { norm_type: 'monthly', norm_min: 2400 }),
+  td('d3', 'c3', 'Видео', 1, { area_id: 'a3' }),
+  td('d4', 'c3', 'Заметки', 2),
+  td('d5', 'c5', 'Английский', 1),
+];
+const TIME_STAGES = ['Идея', 'Сценарий', 'Съёмка', 'Монтаж', 'Обложка и описание'].map((n, i) => ts(`e${i + 1}`, 'd3', n, i + 1));
+const msk = mskNow();
+const mon = weekStartOf(msk.date);
+const v = (category_id: string, direction_id: string | null = null, project_id: string | null = null, stage_id: string | null = null): SlotValue =>
+  ({ category_id, direction_id, project_id, stage_id });
+function timeSlots(): TimeSlot[] {
+  const out: TimeSlot[] = [];
+  const put = (date: string, from: number, to: number, val: SlotValue, h = 0) => {
+    for (let i = from; i < to; i++) {
+      // Время правки — время слота, но не позже «сейчас» (отметки наперёд сделаны раньше), иначе «Последние» в превью врут.
+      const at = Math.min(Date.parse(`${date}T${String(Math.floor(i / 2)).padStart(2, '0')}:${i % 2 ? '30' : '00'}:0${h}+03:00`), Date.now() - 3_600_000 + i * 1000);
+      out.push({ ...val, date, slot: i, updated_at: new Date(at).toISOString() });
+    }
+  };
+  for (let k = 13; k >= 0; k--) {
+    const d = dayAdd(msk.date, -k);
+    const wd = k % 7;
+    const isToday = k === 0;
+    put(d, 2, 16, v('c1'));                                  // сон 1:00–8:00
+    put(d, 16, 18, v('c2'));                                 // утро
+    if (isToday) { put(d, 18, 20, v('c6')); put(d, 20, 26, v('c7', 'd1')); put(d, 26, 27, v('c8')); put(d, 27, 28, v('c7', 'd1')); break; }
+    const work = (k % 7) !== 5 && (k % 7) !== 6;
+    if (work) { put(d, 20, 22 + (k % 3) * 2, v('c7', 'd1')); put(d, 24 + (k % 3), 32, v('c7', 'd1')); }
+    if (k % 2 === 0) put(d, 32, 36, v('c7', 'd2'));
+    put(d, 36, 40 + (wd % 2) * 2, v('c3', 'd3', k > 6 ? 'p8' : 'p7', TIME_STAGES[k % 5].id));
+    if (k % 3 === 0) put(d, 42, 44, v('c5', 'd5'));
+    put(d, 44, 46, v('c8'));
+  }
+  // Сон наперёд сегодня с 23:00
+  put(msk.date, 46, 48, v('c1'), 1);
+  // Старые видео — для сравнения проектов
+  put(dayAdd(mon, -21), 36, 46, v('c3', 'd3', 'p9', 'e2'));
+  put(dayAdd(mon, -20), 30, 44, v('c3', 'd3', 'p9', 'e4'));
+  put(dayAdd(mon, -19), 30, 34, v('c3', 'd3', 'p9'));
+  // Ещё два старых ролика: завершённый и удалённый (его часы остаются в отчётах)
+  put(dayAdd(mon, -35), 30, 40, v('c3', 'd3', 'p12', 'e2')); put(dayAdd(mon, -34), 30, 46, v('c3', 'd3', 'p12', 'e4'));
+  put(dayAdd(mon, -28), 30, 38, v('c3', 'd3', 'p11', 'e1')); put(dayAdd(mon, -27), 30, 44, v('c3', 'd3', 'p11', 'e4'));
+  return out;
+}
+
 export const PREVIEW_SEED: Partial<Data> = {
+  time_categories: TIME_CATS, time_directions: TIME_DIRS, time_stages: TIME_STAGES, time_slots: timeSlots(),
+  timeProjects: [{ id: 'p11', area_id: 'a3', name: 'Ролик про объективы', notes: '', default_skill_id: null, is_quest: false, quest_estimate_min: null, status: 'open', completed_at: null, logged_at: null, sort_order: 11, deleted_at: '2026-11-01T10:00:00Z', created_at: '2026-09-15T10:00:00Z' }],
+  time_week_schedules: [{ id: 'w1', direction_id: 'd1', week_start: dayAdd(mon, -7), days: 0b0011111 }],
   habitGhosts: [habitDeleted],
   goals: [
     goal({ id: 'g1', title: 'Канал — 10 000 подписчиков', metric: 'подписчики', start_value: 410, target_value: 10000, review_date: addDays(t, 108), sort_order: 1 }),
@@ -90,6 +153,7 @@ export const PREVIEW_SEED: Partial<Data> = {
   areas: [
     { id: 'a1', name: 'Работа', sort_order: 1, deleted_at: null },
     { id: 'a2', name: 'Учёба', sort_order: 2, deleted_at: null },
+    { id: 'a3', name: 'Блог', sort_order: 3, deleted_at: null },
   ],
   projects: [
     { id: 'p1', area_id: 'a1', name: 'Запуск нового лендинга', notes: 'Черновик структуры готов.', default_skill_id: 's8', is_quest: false, quest_estimate_min: null, status: 'open', completed_at: null, logged_at: null, sort_order: 1, deleted_at: null },
@@ -97,6 +161,11 @@ export const PREVIEW_SEED: Partial<Data> = {
     { id: 'p4', area_id: 'a2', name: 'Видеоурок про свет', notes: '', default_skill_id: 's4', is_quest: true, quest_estimate_min: 240, status: 'open', completed_at: null, logged_at: null, sort_order: 3, deleted_at: null },
     { id: 'p5', area_id: 'a1', name: 'Финмодель для партнёров', notes: '', default_skill_id: 's10', is_quest: true, quest_estimate_min: null, status: 'open', completed_at: null, logged_at: null, sort_order: 4, deleted_at: null },
     { id: 'p6', area_id: 'a2', name: 'Курс по монтажу', notes: '', default_skill_id: 's5', is_quest: true, quest_estimate_min: 50, status: 'completed', completed_at: at(5, 18), logged_at: at(5, 23), sort_order: 5, deleted_at: null },
+    { id: 'p7', area_id: 'a3', name: 'Ролик про звук на улице', notes: '', default_skill_id: 's5', is_quest: false, quest_estimate_min: null, status: 'open', completed_at: null, logged_at: null, sort_order: 6, deleted_at: null, created_at: '2026-11-08T10:00:00Z' },
+    { id: 'p8', area_id: 'a3', name: 'Ролик про свет', notes: '', default_skill_id: 's5', is_quest: false, quest_estimate_min: null, status: 'completed', completed_at: at(7, 18), logged_at: null, sort_order: 7, deleted_at: null, created_at: '2026-10-20T10:00:00Z' },
+    { id: 'p9', area_id: 'a3', name: 'Разбор камер для начинающих — что купить на первый бюджет', notes: '', default_skill_id: 's5', is_quest: false, quest_estimate_min: null, status: 'completed', completed_at: at(18, 18), logged_at: at(17, 23), sort_order: 8, deleted_at: null, created_at: '2026-10-01T10:00:00Z' },
+    { id: 'p12', area_id: 'a3', name: 'Ролик про штативы', notes: '', default_skill_id: 's5', is_quest: false, quest_estimate_min: null, status: 'completed', completed_at: at(30, 18), logged_at: at(29, 23), sort_order: 10, deleted_at: null, created_at: '2026-08-20T10:00:00Z' },
+    { id: 'p10', area_id: 'a3', name: 'Идеи для роликов', notes: '', default_skill_id: null, is_quest: false, quest_estimate_min: null, status: 'open', completed_at: null, logged_at: null, sort_order: 9, deleted_at: null, created_at: '2026-09-01T10:00:00Z' },
     { id: 'p3', area_id: 'a2', name: 'Курс по рисованию', notes: '', default_skill_id: null, is_quest: false, quest_estimate_min: null, status: 'open', completed_at: null, logged_at: null, sort_order: 1, deleted_at: null },
   ],
   tasks: [

@@ -1,3 +1,5 @@
+import type { SummaryTable, TimeCategory, TimeDirection, TimeStage, TimeWeekSchedule } from './time/types';
+
 export type Status = 'open' | 'completed' | 'canceled';
 
 export type Area = {
@@ -9,6 +11,8 @@ export type Project = {
   default_skill_id: string | null; is_quest: boolean; quest_estimate_min: number | null;
   status: Status; completed_at: string | null; logged_at: string | null;
   sort_order: number; deleted_at: string | null;
+  /** Есть в базе; «Проекты» учёта времени — от новых к старым. */
+  created_at?: string;
 };
 
 export type Task = {
@@ -79,10 +83,15 @@ export type Settings = {
   /** Когда нажали «OK» на плашке «Новые задачи». */
   today_ack_at: string | null;
   tree_layout: TreeLayoutStore | null;
+  /** «Время → Сводка»: выбранные таблицы по порядку. */
+  time_summary_tables: SummaryTable[] | null;
+  /** «Время → Проекты»: выбранные проекты по направлениям (не больше 4). */
+  time_projects_pick: Record<string, string[]> | null;
 };
 
 export type Tables = {
   areas: Area; projects: Project; tasks: Task; skills: Skill;
   goals: Goal; goal_steps: GoalStep; goal_measurements: GoalMeasurement;
+  time_categories: TimeCategory; time_directions: TimeDirection; time_stages: TimeStage; time_week_schedules: TimeWeekSchedule;
 };
 export type TableName = keyof Tables;

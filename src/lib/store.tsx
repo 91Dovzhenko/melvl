@@ -4,10 +4,17 @@ import { addDays, iso, todayISO } from './dates';
 import { repeatFirst, repeatNext, type RepeatRule } from './repeat';
 import { copiesCreatedSince } from './newTasks';
 import type { Area, Goal, GoalMeasurement, GoalStep, Project, Settings, Skill, TableName, Tables, Task } from './types';
+import type { TimeCategory, TimeDirection, TimeSlot, TimeStage, TimeWeekSchedule } from './time/types';
+import type { SlotChange } from './time/day';
 
 export type Data = {
   areas: Area[]; projects: Project[]; tasks: Task[]; skills: Skill[];
   goals: Goal[]; goal_steps: GoalStep[]; goal_measurements: GoalMeasurement[];
+  /** Учёт времени (этап 5): справочники, рабочие дни недели, слоты. */
+  time_categories: TimeCategory[]; time_directions: TimeDirection[]; time_stages: TimeStage[];
+  time_week_schedules: TimeWeekSchedule[]; time_slots: TimeSlot[];
+  /** Удалённые проекты, на которые отмечено время: в отчётах их часы остаются. */
+  timeProjects: Project[];
   /** Удалённые копии привычек: в списках их нет, но в сводке главы они — «положено» (решение 13 нояб.). */
   habitGhosts: Task[];
   rules: RepeatRule[];
@@ -30,6 +37,8 @@ type Store = Data & {
   setRepeat(taskId: string, r: RepeatInput): Promise<void>;
   /** Остановить повтор: шаблон становится обычной задачей. */
   stopRepeat(taskId: string): Promise<void>;
+  /** Поставить / очистить слоты дня (одна правка — одна отмена). value: null — очистить. */
+  setSlots(date: string, changes: SlotChange[]): void;
   /** Перечитать данные (например, после отметки копии «после выполнения»). */
   reload(): Promise<void>;
 };
@@ -39,7 +48,8 @@ export type RepeatInput = Pick<RepeatRule, 'kind' | 'every' | 'unit' | 'weekdays
 type UndoStep =
   | { kind: 'insert'; table: TableName; id: string }
   | { kind: 'remove'; table: TableName; row: { id: string } }
-  | { kind: 'patch'; table: TableName; id: string; prev: Record<string, unknown> };
+  | { kind: 'patch'; table: TableName; id: string; prev: Record<string, unknown> }
+  | { kind: 'slots'; date: string; prev: SlotChange[] };
 
 const Ctx = createContext<Store | null>(null);
 
@@ -49,9 +59,16 @@ export function useStore() {
   return s;
 }
 
-const DEFAULT_SETTINGS: Settings = { log_mode: 'manual', today_view: 'projects', last_auto_log: null, character_seen_at: null, tree_layout: null, today_ack_at: null };
-const SETTINGS_COLS = 'log_mode,today_view,last_auto_log,character_seen_at,tree_layout,today_ack_at';
-const TABLES = ['areas', 'projects', 'tasks', 'skills', 'goals', 'goal_steps', 'goal_measurements'] as const;
+const DEFAULT_SETTINGS: Settings = {
+  log_mode: 'manual', today_view: 'projects', last_auto_log: null, character_seen_at: null, tree_layout: null, today_ack_at: null,
+  time_summary_tables: null, time_projects_pick: null,
+};
+const SETTINGS_KEYS = Object.keys(DEFAULT_SETTINGS) as (keyof Settings)[];
+const SETTINGS_COLS = SETTINGS_KEYS.join(',');
+const TIME_TABLES = ['time_categories', 'time_directions', 'time_stages', 'time_week_schedules'] as const;
+const TABLES = ['areas', 'projects', 'tasks', 'skills', 'goals', 'goal_steps', 'goal_measurements', ...TIME_TABLES] as const;
+const SLOT_COLS = 'date,slot,category_id,direction_id,project_id,stage_id,updated_at';
+const slotKey = (date: string, slot: number) => `slot:${date}:${slot}`;
 
 const now = () => new Date().toISOString();
 
@@ -83,6 +100,15 @@ function defaults<T extends TableName>(table: T, row: Partial<Tables[T]>): Table
     const { sort_order: _s, ...rest } = base;
     return { ...rest, goal_id: '', date: todayISO(), value: 0, comment: '', ...row } as Tables[T];
   }
+  if (table === 'time_categories') return { ...base, name: '', color: 'graphite', status: 'active', ...row } as Tables[T];
+  if (table === 'time_directions') return {
+    ...base, category_id: '', name: '', status: 'active', norm_type: 'none', norm_min: 0, area_id: null, ...row,
+  } as Tables[T];
+  if (table === 'time_stages') return { ...base, direction_id: '', name: '', status: 'active', ...row } as Tables[T];
+  if (table === 'time_week_schedules') {
+    const { sort_order: _s, deleted_at: _d, ...rest } = base;
+    return { ...rest, direction_id: '', week_start: '', days: 0, ...row } as Tables[T];
+  }
   return { ...base, name: '', branch: 'creator', icon: '', active: true, created_at: now(), ...row } as Tables[T];
 }
 
@@ -94,6 +120,7 @@ function defaults<T extends TableName>(table: T, row: Partial<Tables[T]>): Table
 export function StoreProvider({ children, offline, seed }: { children: React.ReactNode; offline?: boolean; seed?: Partial<Data> }) {
   const [data, setData] = useState<Data>({
     areas: [], projects: [], tasks: [], skills: [], goals: [], goal_steps: [], goal_measurements: [], habitGhosts: [],
+    time_categories: [], time_directions: [], time_stages: [], time_week_schedules: [], time_slots: [], timeProjects: [],
     rules: [], settings: DEFAULT_SETTINGS, loading: !offline, ...seed,
   });
   const [toastMsg, setToastMsg] = useState<{ msg: string; action?: ToastAction } | null>(null);
@@ -128,7 +155,8 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
       supabase.from('goal_measurements').select('*').is('deleted_at', null).order('date'),
       supabase.from('tasks').select('*').eq('is_habit', true).not('repeat_template_id', 'is', null).not('deleted_at', 'is', null),
     ]);
-    const err = init.error || a.error || p.error || t.error || s.error || st.error || g.error || gs.error || gm.error;
+    const time = await loadTime(supabase);
+    const err = init.error || a.error || p.error || t.error || s.error || st.error || g.error || gs.error || gm.error || time.error;
     if (err) { toast('Не удалось загрузить данные'); console.error(err); }
     setData((d) => ({
       areas: (a.data as Area[]) ?? d.areas,
@@ -141,6 +169,8 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
       habitGhosts: (hg.data as Task[]) ?? d.habitGhosts,
       settings: (st.data as unknown as Settings) ?? d.settings,
       rules: (rr.data as RepeatRule[]) ?? d.rules,
+      // Ошибка загрузки времени — оставляем то, что было в памяти .
+      ...(time.error ? pickTime(d) : time.data),
       loading: false,
     }));
   }, [offline, toast]);
@@ -172,7 +202,7 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
       const uid = s.session?.user.id;
       if (!alive || !uid) return;
       channel = sb.channel('melvl-' + uid);
-      for (const table of [...TABLES, 'repeat_rules', 'settings'] as const) {
+      for (const table of [...TABLES, 'repeat_rules', 'settings', 'time_slots'] as const) {
         channel.on('postgres_changes', { event: '*', schema: 'public', table, filter: `owner=eq.${uid}` },
           (e) => applyRemote(table, e.eventType, e.new as Record<string, unknown>, e.old as Record<string, unknown>));
       }
@@ -181,6 +211,11 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
         channel.on('postgres_changes', { event: 'DELETE', schema: 'public', table },
           (e) => applyRemote(table, 'DELETE', {}, e.old as Record<string, unknown>));
       }
+      // Слоты удаляются по-настоящему: в событии — ключ (owner, date, slot), чужие отбрасываем по owner.
+      channel.on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'time_slots' }, (e) => {
+        const old = e.old as Record<string, unknown>;
+        if (old.owner === uid) applyRemote('time_slots', 'DELETE', {}, old);
+      });
       channel.subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           // Переподключились после обрыва — подтянуть то, что пропустили.
@@ -218,11 +253,27 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
     return Promise.resolve(p).then((r) => { done(); return r; }, (e) => { done(); throw e; });
   }, []);
 
-  const applyRemote = (table: TableName | 'repeat_rules' | 'settings', type: string, row: Record<string, unknown>, old: Record<string, unknown>) => {
+  const applyRemote = (table: TableName | 'repeat_rules' | 'settings' | 'time_slots', type: string, row: Record<string, unknown>, old: Record<string, unknown>) => {
     if (table === 'settings') {
       if (type === 'DELETE' || pending.current.has('settings')) return;
-      const { log_mode, today_view, last_auto_log, character_seen_at, tree_layout, today_ack_at } = row as Settings;
-      setData((d) => ({ ...d, settings: { log_mode, today_view, last_auto_log, character_seen_at, tree_layout, today_ack_at } }));
+      const next = {} as Record<string, unknown>;
+      for (const k of SETTINGS_KEYS) next[k] = row[k] ?? null;
+      setData((d) => ({ ...d, settings: next as Settings }));
+      return;
+    }
+    if (table === 'time_slots') {
+      const date = (row.date ?? old.date) as string | undefined;
+      const slot = (row.slot ?? old.slot) as number | undefined;
+      if (!date || slot === undefined || pending.current.has(slotKey(date, slot))) return;
+      setData((d) => {
+        const rest = d.time_slots.filter((x) => !(x.date === date && x.slot === slot));
+        if (type === 'DELETE') return rest.length === d.time_slots.length ? d : { ...d, time_slots: rest };
+        const r = row as unknown as TimeSlot;
+        return { ...d, time_slots: [...rest, { date, slot, category_id: r.category_id, direction_id: r.direction_id, project_id: r.project_id, stage_id: r.stage_id, updated_at: r.updated_at }] };
+      });
+      // Проект, которого нет в списках (удалён мягко), — подтянуть для отчётов.
+      const pid = row.project_id as string | null | undefined;
+      if (pid && !dataRef.current.projects.some((x) => x.id === pid) && !dataRef.current.timeProjects.some((x) => x.id === pid)) void loadRef.current();
       return;
     }
     if (table === 'repeat_rules') {
@@ -288,6 +339,11 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
       (changes as Partial<Task>).when_set_at = (changes as Partial<Task>).when_date ? now() : null;
     }
     setTable(table, (rows) => rows.map((r) => (r.id === id ? { ...r, ...changes } : r)));
+    // Направление перенесли в другую категорию — его слоты тоже (в базе — on update cascade).
+    if (table === 'time_directions' && 'category_id' in changes) {
+      const cat = (changes as Partial<TimeDirection>).category_id!;
+      setData((d) => ({ ...d, time_slots: d.time_slots.map((x) => (x.direction_id === id ? { ...x, category_id: cat } : x)) }));
+    }
     // Отметили копию повтора «после выполнения» — в базе следующую дату ставит триггер; без входа — то же здесь.
     const copyDone = table === 'tasks' && (changes as Partial<Task>).status === 'completed' && (prev as Task).repeat_template_id;
     if (copyDone && (!supabase || offline)) setData((d) => afterCompletionLocal(d, prev as Task));
@@ -323,12 +379,60 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
     }
   }, [offline, setTable, toast, track]);
 
+  /**
+   * Слоты дня: сразу в памяти, в базу — upsert по (owner, date, slot) и delete для очищенных.
+   * Ошибка сервера — прежние значения обратно.
+   */
+  const setSlots = useCallback((date: string, changes: SlotChange[]) => {
+    if (!changes.length) return;
+    const before = new Map(dataRef.current.time_slots.filter((x) => x.date === date).map((x) => [x.slot, x]));
+    const prev: SlotChange[] = changes.map((c) => {
+      const b = before.get(c.slot);
+      return { slot: c.slot, value: b ? { category_id: b.category_id, direction_id: b.direction_id, project_id: b.project_id, stage_id: b.stage_id } : null };
+    });
+    recorder.current?.push({ kind: 'slots', date, prev });
+    const stamp = now();
+    const touched = new Set(changes.map((c) => c.slot));
+    const apply = (list: SlotChange[], at: string) => setData((d) => ({
+      ...d,
+      time_slots: [
+        ...d.time_slots.filter((x) => !(x.date === date && list.some((c) => c.slot === x.slot))),
+        ...list.flatMap((c) => (c.value ? [{ ...c.value, date, slot: c.slot, updated_at: at }] : [])),
+      ],
+    }));
+    apply(changes, stamp);
+    if (!supabase || offline) return;
+    const sb = supabase;
+    const put = changes.filter((c) => c.value).map((c) => ({ date, slot: c.slot, ...c.value! }));
+    const del = changes.filter((c) => !c.value).map((c) => c.slot);
+    const reqs: PromiseLike<{ error: unknown }>[] = [];
+    if (put.length) reqs.push(sb.from('time_slots').upsert(put, { onConflict: 'owner,date,slot' }));
+    if (del.length) reqs.push(sb.from('time_slots').delete().eq('date', date).in('slot', del));
+    const all = Promise.all(reqs);
+    for (const sl of touched) void track(slotKey(date, sl), all).catch(() => {});
+    all.then((res) => {
+      const error = res.find((r) => r.error)?.error;
+      if (!error) return;
+      console.error(error);
+      setData((d) => ({
+        ...d,
+        time_slots: [
+          ...d.time_slots.filter((x) => !(x.date === date && touched.has(x.slot))),
+          ...[...touched].flatMap((sl) => { const b = before.get(sl); return b ? [b] : []; }),
+        ],
+      }));
+      toast('Не сохранилось — проверьте связь');
+    }, (e) => { console.error(e); toast('Не сохранилось — проверьте связь'); });
+  }, [offline, toast, track]);
+
   /** Вернуть удалённые строки (deleted_at = null) и прежние значения полей — в обратном порядке. */
   const undo = useCallback(() => {
     const entry = undoStack.current.pop();
     if (!entry) return false;
     for (const step of [...entry.steps].reverse()) {
-      if (step.kind === 'insert') {
+      if (step.kind === 'slots') {
+        setSlots(step.date, step.prev);
+      } else if (step.kind === 'insert') {
         remove(step.table, step.id);
       } else if (step.kind === 'remove') {
         const row = { ...step.row, deleted_at: null };
@@ -347,7 +451,7 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
     // Например, вернуть на страницу восстановленного проекта — чтобы было видно, что отмена сработала.
     entry.onUndo?.();
     return true;
-  }, [offline, patch, remove, setTable, toast, track]);
+  }, [offline, patch, remove, setSlots, setTable, toast, track]);
 
   // quiet — без плашки «Отменить» (перестановка перетаскиванием): ⌘Z всё равно отменяет.
   const withUndo = useCallback((message: string, fn: () => void, onUndo?: () => void, quiet?: boolean) => {
@@ -419,8 +523,8 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
     await load();
   }, [offline, load]);
 
-  const value = useMemo(() => ({ ...data, insert, patch, remove, withUndo, undo, toast, patchSettings, setRepeat, stopRepeat, reload }),
-    [data, insert, patch, remove, withUndo, undo, toast, patchSettings, setRepeat, stopRepeat, reload]);
+  const value = useMemo(() => ({ ...data, insert, patch, remove, withUndo, undo, toast, patchSettings, setRepeat, stopRepeat, reload, setSlots }),
+    [data, insert, patch, remove, withUndo, undo, toast, patchSettings, setRepeat, stopRepeat, reload, setSlots]);
 
   return (
     <Ctx.Provider value={value}>
@@ -436,6 +540,46 @@ export function StoreProvider({ children, offline, seed }: { children: React.Rea
     </Ctx.Provider>
   );
 }
+
+/**
+ * Учёт времени: справочники (без удалённых), рабочие дни, все слоты (по 1000 за запрос — у Data API предел строк)
+ * и удалённые проекты, на которые отмечено время.
+ */
+async function loadTime(sb: NonNullable<typeof supabase>): Promise<{ error: unknown; data: Pick<Data, 'time_categories' | 'time_directions' | 'time_stages' | 'time_week_schedules' | 'time_slots' | 'timeProjects'> }> {
+  const [c, d, st, w] = await Promise.all([
+    sb.from('time_categories').select('*').is('deleted_at', null).order('sort_order'),
+    sb.from('time_directions').select('*').is('deleted_at', null).order('sort_order'),
+    sb.from('time_stages').select('*').is('deleted_at', null).order('sort_order'),
+    sb.from('time_week_schedules').select('id,direction_id,week_start,days'),
+  ]);
+  const slots: TimeSlot[] = [];
+  let slotErr: unknown = null;
+  for (let from = 0; ; from += 1000) {
+    const r = await sb.from('time_slots').select(SLOT_COLS).order('date').order('slot').range(from, from + 999);
+    if (r.error) { slotErr = r.error; break; }
+    slots.push(...(r.data as unknown as TimeSlot[]));
+    if (r.data.length < 1000) break;
+  }
+  const pids = [...new Set(slots.map((x) => x.project_id).filter((x): x is string => !!x))];
+  let timeProjects: Project[] = [];
+  if (pids.length) {
+    const r = await sb.from('projects').select('*').not('deleted_at', 'is', null).in('id', pids);
+    if (!r.error) timeProjects = r.data as Project[];
+  }
+  return {
+    error: c.error || d.error || st.error || w.error || slotErr,
+    data: {
+      time_categories: (c.data ?? []) as TimeCategory[], time_directions: (d.data ?? []) as TimeDirection[],
+      time_stages: (st.data ?? []) as TimeStage[], time_week_schedules: (w.data ?? []) as TimeWeekSchedule[],
+      time_slots: slots, timeProjects,
+    },
+  };
+}
+
+const pickTime = (d: Data) => ({
+  time_categories: d.time_categories, time_directions: d.time_directions, time_stages: d.time_stages,
+  time_week_schedules: d.time_week_schedules, time_slots: d.time_slots, timeProjects: d.timeProjects,
+});
 
 const isHabitCopy = (r: Record<string, unknown>) => !!r.is_habit && !!r.repeat_template_id && !r.is_template;
 

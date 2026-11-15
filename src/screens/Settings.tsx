@@ -16,6 +16,7 @@ import { SKILL_ICON_GROUPS, SKILL_ICON_LABEL, SKILL_ICONS } from '../ui/skillIco
 import { useIsPhone } from '../ui/useIsPhone';
 import { LEVEL_TABLE_ROWS, levelTable, type LevelKind } from '../lib/growth/levels';
 import { fmtMin } from '../lib/dates';
+import { TimeSettingsSection } from './time/TimeSettings';
 
 const D = {
   account: 'M8 8a4 4 0 1 0 8 0a4 4 0 1 0 -8 0 M4.5 20a7.5 7.5 0 0 1 15 0',
@@ -34,6 +35,7 @@ const SECTIONS = [
   { key: 'log', label: 'Журнал' },
   { key: 'today', label: 'Сегодня' },
   { key: 'skills', label: 'Навыки' },
+  { key: 'time', label: 'Учёт времени' },
   { key: 'about', label: 'О приложении' },
 ] as const;
 type SectionKey = typeof SECTIONS[number]['key'];
@@ -41,7 +43,6 @@ type SectionKey = typeof SECTIONS[number]['key'];
 const LATER = [
   { label: 'Календари', stage: 'этап 3', d: D.calendars },
   { label: 'Claude', stage: 'этап 4', d: D.claude },
-  { label: 'Время', stage: 'этап 5', d: D.time },
 ];
 
 const LOG_MODES: { value: Settings['log_mode']; label: string; hint: string }[] = [
@@ -75,6 +76,7 @@ export function SettingsScreen() {
     log: LOG_MODES.find((m) => m.value === store.settings.log_mode)?.label ?? '',
     today: store.settings.today_view === 'list' ? 'Списком' : 'По проектам',
     skills: String(store.skills.length),
+    time: String(store.time_categories.length || ''),
     about: '',
   };
 
@@ -231,6 +233,7 @@ function Section({ k }: { k: SectionKey }) {
     );
   }
   if (k === 'skills') return <SkillsSection />;
+  if (k === 'time') return <TimeSettingsSection />;
   return (
     <>
       <Head title="О приложении" />

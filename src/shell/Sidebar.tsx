@@ -15,13 +15,11 @@ export const SECTIONS: { path: string; label: string; icon: IconName; count?: 'i
   { path: '/log', label: 'Журнал', icon: 'log' },
 ];
 
-/** Разделы роста: «Персонаж» (точка-бейдж) и «Цели»; «Время» — скоро. */
+/** Разделы роста: «Персонаж» (точка-бейдж), «Цели» и «Время». */
 export const GROWTH: { path: string; label: string; icon: IconName; dot?: boolean }[] = [
   { path: '/character', label: 'Персонаж', icon: 'character', dot: true },
   { path: '/goals', label: 'Цели', icon: 'goal' },
-];
-export const FUTURE: { label: string; icon: IconName }[] = [
-  { label: 'Время', icon: 'time' },
+  { path: '/time', label: 'Время', icon: 'time' },
 ];
 
 /** Точка-бейдж на «Персонаже»: вырос уровень после последнего открытия раздела. */
@@ -117,13 +115,6 @@ export function Sidebar() {
             <span className="label">{g.label}</span>
             {g.dot && dot && <span className="badge-dot" role="img" aria-label="Новый уровень" />}
           </NavLink>
-        ))}
-        {FUTURE.map((f) => (
-          <button key={f.label} type="button" className="nav-item future" disabled aria-disabled="true">
-            <Icon name={f.icon} size={18} color="#8E9289" />
-            <span className="label">{f.label}</span>
-            <span className="soon">скоро</span>
-          </button>
         ))}
       </div>
 
