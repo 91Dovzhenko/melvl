@@ -931,14 +931,19 @@ a.pill-mini:hover { background: var(--chip-hover); }
 .sum-side { display: flex; flex-direction: column; gap: 30px; }
 .sum-block { display: flex; flex-direction: column; gap: 14px; }
 .sum-block.tight { gap: 12px; }
-.sum-branch, .sum-habit { display: flex; flex-direction: column; gap: 7px; }
-.sum-branch .t, .sum-habit .t { display: flex; align-items: baseline; gap: 8px; font-size: 13px; }
+.sum-branch { display: flex; flex-direction: column; gap: 7px; }
+.sum-branch .t { display: flex; align-items: baseline; gap: 8px; font-size: 13px; }
 .sum-branch .t b { font-weight: 800; }
 .sum-branch .t > span { font-weight: 600; color: var(--text-muted); }
 .sum-branch .t .lv { margin-left: auto; font-weight: 700; color: var(--text); white-space: nowrap; }
-.sum-habit .t b { font-weight: 700; }
-.sum-habit .t > span { margin-left: auto; font-weight: 600; color: var(--text-muted); }
-.sum-habit .t .pct { margin-left: 0; font-weight: 800; color: var(--text); width: 38px; text-align: right; }
+/* Привычки главы: одна сетка на все строки — колонки счётчика и процента по самому длинному значению */
+.sum-habits { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; column-gap: 8px; row-gap: 7px; align-items: baseline; font-size: 13px; font-variant-numeric: tabular-nums; }
+.sum-habit-row { display: contents; }
+.sum-habits .nm { min-width: 0; font-weight: 700; line-height: 1.35; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+.sum-habits .cnt { white-space: nowrap; text-align: right; font-weight: 600; color: var(--text-muted); }
+.sum-habits .pct { white-space: nowrap; text-align: right; font-weight: 800; color: var(--text); }
+.sum-habits .bar6 { grid-column: 1 / -1; margin-bottom: 5px; }
+.sum-habits .sum-habit-row:last-child .bar6 { margin-bottom: 0; }
 .bar8, .bar6 { border-radius: 4px; background: var(--line-menu); overflow: hidden; }
 .bar8 { height: 8px; } .bar6 { height: 6px; }
 .bar8 > div, .bar6 > div { height: 100%; background: var(--accent-dark); border-radius: 4px; }

@@ -47,6 +47,28 @@ const habitCopies = [
   habitCopy('h2', 6, { when_date: addDays(t, -5), status: 'completed', completed_at: at(5, 9), logged_at: at(5, 23) }),
 ];
 const habitDeleted = habitCopy('h3', 4, { deleted_at: at(4, 12) });
+// Для проверки вёрстки «Привычек» в сводке главы: длинное название «1 из 3», «18 из 21» (86%) и «7 из 7» (100%).
+// Глава 3 — 1–10 дней назад; глава 4 (идёт, её сводка — в окне поздравления с уровнем 5) — сегодня.
+// Пропущенные копии — удалённые (для сводки это тот же пропуск), чтобы не висели в «Сегодня».
+// Копий «18 из 21» — по 2–3 в день: в демо главы короче 21 дня.
+const habitSet = (tpl: string, title: string, agos: number[], doneCount: number) => {
+  const copies = agos.map((ago, i) => task({
+    id: `${tpl}c${i}`, title, is_habit: true, repeat_template_id: tpl, repeat_date: addDays(t, -ago), when_date: addDays(t, -ago),
+    ...(i < doneCount ? { status: 'completed' as const, completed_at: at(ago, 7 + (i % 3)), logged_at: at(ago, 23) } : { deleted_at: at(ago, 23) }),
+  }));
+  return { tasks: [task({ id: tpl, title, is_template: true, is_habit: true }), ...copies.filter((c) => !c.deleted_at)], ghosts: copies.filter((c) => c.deleted_at) };
+};
+const LONG_HABIT = 'Прочитать 30 страниц книги про сторителлинг и выписать три главные мысли в заметки';
+const habitSets = [
+  habitSet('hl', LONG_HABIT, [10, 7, 4], 1),
+  habitSet('hw', 'Стакан воды', [10, 10, 9, 9, 8, 8, 7, 7, 6, 6, 5, 5, 4, 4, 3, 3, 2, 2, 1, 1, 1], 18),
+  habitSet('hs', 'Растяжка', [10, 9, 8, 7, 6, 5, 4], 7),
+  habitSet('hl4', LONG_HABIT, [0, 0, 0], 1),
+  habitSet('hw4', 'Стакан воды', Array(21).fill(0), 18),
+  habitSet('hs4', 'Растяжка', [0, 0], 2),
+];
+const habitsLayout = habitSets.flatMap((x) => x.tasks);
+const habitsLayoutGhosts = habitSets.flatMap((x) => x.ghosts);
 // Для приёмки (критерий 8, смешанный случай): у «Маркетинга» задача в проекте с другим навыком («Запуск лендинга» → Продукт)
 // и задача без проекта (из истории). «Оставить без навыка»: Продукт получит 1:00, 0:30 больше не будут считаться.
 const mixedTask = task({ project_id: 'p1', skill_id: 's6', title: 'Текст рассылки о запуске', estimate_min: 60, status: 'completed', completed_at: at(9, 15), logged_at: at(9, 23) });
@@ -128,7 +150,7 @@ export const PREVIEW_SEED: Partial<Data> = {
   time_categories: TIME_CATS, time_directions: TIME_DIRS, time_stages: TIME_STAGES, time_slots: timeSlots(),
   timeProjects: [{ id: 'p11', area_id: 'a3', name: 'Ролик про объективы', notes: '', default_skill_id: null, is_quest: false, quest_estimate_min: null, status: 'open', completed_at: null, logged_at: null, sort_order: 11, deleted_at: '2026-11-01T10:00:00Z', created_at: '2026-09-15T10:00:00Z' }],
   time_week_schedules: [{ id: 'w1', direction_id: 'd1', week_start: dayAdd(mon, -7), days: 0b0011111 }],
-  habitGhosts: [habitDeleted],
+  habitGhosts: [habitDeleted, ...habitsLayoutGhosts],
   goals: [
     goal({ id: 'g1', title: 'Канал — 10 000 подписчиков', metric: 'подписчики', start_value: 410, target_value: 10000, review_date: addDays(t, 108), sort_order: 1 }),
     goal({ id: 'g2', title: 'Доход с контента — 500 000 ₽/мес', metric: '₽ с контента/мес', calc: 'average', target_value: 500000, sort_order: 2 }),
@@ -183,7 +205,7 @@ export const PREVIEW_SEED: Partial<Data> = {
     task({ project_id: 'p1', title: 'Собрать стратегию запуска на квартал', when_date: t, estimate_min: 1000 }),
     task({ title: 'Идея: заметки голосом' }),
     ...historyTasks,
-    habitTemplate, ...habitCopies, ...questTasks, mixedTask,
+    habitTemplate, ...habitCopies, ...questTasks, mixedTask, ...habitsLayout,
     task({ title: 'Купить подарок к выходным', when_date: addDays(t, 1), estimate_min: 30 }),
     task({ project_id: 'p3', title: 'Купить скетчбук', when_date: addDays(t, 1), estimate_min: 15 }),
   ],

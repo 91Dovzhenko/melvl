@@ -24,6 +24,31 @@ export const chapterSub = (s: Summary) =>
   `${fmtRange(s.bounds.startDay, s.bounds.lastDay)} · от уровня ${s.from} до уровня ${s.to}${s.bounds.n === 1 ? ' · первая глава' : ''}`;
 
 const STAR = 'M12 2.8l2.75 5.75 6.3.8-4.6 4.35 1.15 6.25L12 16.9l-5.6 3.05 1.15-6.25L2.95 9.35l6.3-.8z';
+/**
+ * Привычки главы: «название · X из Y · %» и полоса под строкой на всю ширину.
+ * Одна сетка на все строки: счётчик и процент не переносятся, их колонки — по самому длинному значению,
+ * поэтому «1 из 3» и «18 из 21», «33%» и «100%» стоят ровно друг под другом; название — до двух строк, дальше многоточие
+ * (без подсказки с полным названием — как в Things).
+ */
+function HabitRows({ habits }: { habits: Summary['habits'] }) {
+  return (
+    <div className="sum-habits">
+      {habits.map((h) => {
+        const pct = Math.round((h.done / h.due) * 100);
+        const title = h.title || 'Без названия';
+        return (
+          <div key={h.templateId} className="sum-habit-row">
+            <b className="nm">{title}</b>
+            <span className="cnt">{h.done} из {h.due}</span>
+            <span className="pct">{pct}%</span>
+            <div className="bar6"><div style={{ width: `${pct}%` }} /></div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function Star({ size = 16 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" style={{ flexShrink: 0 }}>
@@ -124,12 +149,7 @@ export function ChapterSummaryView({ s, framed }: { s: Summary; framed: boolean 
           {s.habits.length > 0 && (
             <div className="sum-block tight">
               <h3>Привычки</h3>
-              {s.habits.map((h) => (
-                <div key={h.templateId} className="sum-habit">
-                  <div className="t"><b>{h.title || 'Без названия'}</b><span>{h.done} из {h.due}</span><span className="pct">{Math.round((h.done / h.due) * 100)}%</span></div>
-                  <div className="bar6"><div style={{ width: `${Math.round((h.done / h.due) * 100)}%` }} /></div>
-                </div>
-              ))}
+              <HabitRows habits={s.habits} />
             </div>
           )}
         </div>
@@ -264,12 +284,7 @@ function PhoneSummary({ s, framed, stats, groups, skillName, projectName, moment
       {s.habits.length > 0 && (
         <section className="psum-sec">
           <h3>Привычки</h3>
-          {s.habits.map((h) => (
-            <div key={h.templateId} className="sum-habit">
-              <div className="t"><b>{h.title || 'Без названия'}</b><span>{h.done} из {h.due}</span><span className="pct">{Math.round((h.done / h.due) * 100)}%</span></div>
-              <div className="bar6"><div style={{ width: `${Math.round((h.done / h.due) * 100)}%` }} /></div>
-            </div>
-          ))}
+          <HabitRows habits={s.habits} />
         </section>
       )}
       {s.moments.length > 0 && (
