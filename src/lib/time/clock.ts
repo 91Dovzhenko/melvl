@@ -48,6 +48,9 @@ export function slotTime(slot: number, leadingZero = true) {
   return `${leadingZero ? pad(h) : h}:${pad(m % 60)}`;
 }
 
+/** Подпись слота в «Дне» — диапазон «08:00 – 08:30»; последний — «23:30 – 24:00» (ТЗ 24, п. 1). */
+export const slotRange = (slot: number) => `${slotTime(slot)} – ${slotTime(slot + 1)}`;
+
 /**
  * Смена дня: открыт сегодняшний день и по Москве наступил новый — показываем новый день.
  * Открыт другой день — остаётся.

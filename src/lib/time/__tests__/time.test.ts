@@ -368,3 +368,11 @@ test('Время · протянуть: смена направления в о�
   assert.deepEqual(down.changes.map((c) => c.slot), [26, 27, 28]);
   assert.equal(down.cleared, 0);
 });
+
+test('Время · подпись слота — диапазон «08:00 – 08:30», последний «23:30 – 24:00» (ТЗ 24)', async () => {
+  const { slotRange } = await import('../clock.ts');
+  assert.equal(slotRange(0), '00:00 – 00:30');
+  assert.equal(slotRange(16), '08:00 – 08:30');
+  assert.equal(slotRange(17), '08:30 – 09:00');
+  assert.equal(slotRange(47), '23:30 – 24:00');
+});

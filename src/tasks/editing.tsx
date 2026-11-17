@@ -116,6 +116,10 @@ export function EditingProvider({ children }: { children: React.ReactNode }) {
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
+/** ⌘S (24_ТЗ, п. 2): открыть окно «Когда» у поля карточки / у строки выделенной задачи (detail — id задачи). */
+export const WHEN_CARD_EVENT = 'melvl:when-card';
+export const WHEN_ROW_EVENT = 'melvl:when-row';
+
 /** Раздел сообщает, куда и с чем создавать новую задачу. */
 export function useNewTaskContext(ctx: NewTaskContext) {
   const { register } = useEditing();

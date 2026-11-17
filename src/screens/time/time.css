@@ -99,9 +99,12 @@
 .day-empty { display: flex; align-items: center; gap: 10px; background: #F7F8F5; border-radius: 12px; padding: 10px 14px; font-size: 13px; font-weight: 600; color: var(--text-2); }
 
 .day-wrap { position: relative; display: flex; font-variant-numeric: tabular-nums; user-select: none; -webkit-user-select: none; }
-.day-times { width: 56px; flex-shrink: 0; display: flex; flex-direction: column; }
-.day-times span { height: 28px; line-height: 28px; font-size: 12px; font-weight: 700; color: var(--text-2); }
-.day-times span.half { font-size: 11px; font-weight: 600; color: #B4B8B0; }
+.day-wrap { --time-col: 92px; --now-dot: 86px; }
+.day-wrap.ph { --time-col: 82px; --now-dot: 78px; }
+/* Подпись слота — диапазон «08:00 – 08:30»; час и половина — один размер, разница цветом и весом (ТЗ 24) */
+.day-times { width: var(--time-col); flex-shrink: 0; display: flex; flex-direction: column; }
+.day-times span { height: 28px; line-height: 28px; font-size: 12px; font-weight: 700; color: var(--text-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.day-times span.half { font-weight: 600; color: #B4B8B0; }
 .day-list { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; cursor: default; }
 .day-list.filling { cursor: ns-resize; }
 .day-empty-slot { box-sizing: border-box; border-bottom: 1px solid #F0F1EC; border-radius: 6px; }
@@ -121,10 +124,11 @@
 .day-handle { position: absolute; left: calc(50% - 14px); width: 28px; height: 8px; border-radius: 4px; background: #3D6A00; box-shadow: 0 0 0 2px #FFFFFF; z-index: 7; cursor: ns-resize; }
 .day-handle::before { content: ''; position: absolute; inset: -8px -10px; }
 .day-handle.dark { background: var(--text); }
-.day-now { position: absolute; left: -56px; right: 0; height: 0; z-index: 6; pointer-events: none; }
-.day-now .tag { position: absolute; left: 0; top: -9px; height: 18px; border-radius: 6px; background: #3D6A00; color: #FFFFFF; font-size: 11px; font-weight: 800; padding: 0 5px; line-height: 18px; }
-.day-now .dot { position: absolute; left: 50px; top: -4px; width: 8px; height: 8px; border-radius: 50%; background: #3D6A00; }
-.day-now .line { position: absolute; left: 56px; right: 0; top: -1px; height: 2px; background: #3D6A00; }
+/* «Сейчас»: метка в колонке на месте подписи своего слота, линия — от края колонки */
+.day-now { position: absolute; left: 0; right: 0; height: 0; z-index: 6; pointer-events: none; }
+.day-now-tag { position: absolute; left: 0; z-index: 7; height: 18px; border-radius: 6px; background: #3D6A00; color: #FFFFFF; font-size: 11px; font-weight: 800; padding: 0 5px; line-height: 18px; pointer-events: none; font-variant-numeric: tabular-nums; }
+.day-now .dot { position: absolute; left: var(--now-dot); top: -4px; width: 8px; height: 8px; border-radius: 50%; background: #3D6A00; }
+.day-now .line { position: absolute; left: var(--time-col); right: 0; top: -1px; height: 2px; background: #3D6A00; }
 
 /* ── Окно отметки ── */
 .mark-pop { position: absolute; right: 24px; z-index: 20; width: 320px; box-sizing: border-box; background: var(--dark, #15171A); color: #FFFFFF; border-radius: 20px; padding: 10px; box-shadow: 0 18px 40px rgba(21, 23, 26, .28); display: flex; flex-direction: column; gap: 1px; cursor: default; user-select: none; }
@@ -255,16 +259,13 @@
 .day-count-ph { margin-left: auto; display: flex; align-items: baseline; gap: 4px; white-space: nowrap; }
 .day-count-ph b { font-family: Unbounded, sans-serif; font-size: 16px; font-weight: 600; }
 .day-count-ph span { font-size: 12px; font-weight: 700; color: #8E9289; }
-.day-wrap.ph .day-times { width: 50px; }
-.day-wrap.ph .day-times span { height: 36px; line-height: 36px; }
+.day-wrap.ph .day-times span { height: 36px; line-height: 36px; font-size: 11px; }
 .day-wrap.ph .day-block-label { height: 36px; padding: 0 10px 0 12px; gap: 6px; }
 .day-wrap.ph .day-block-label .path { flex: 1; font-size: 14px; }
 .day-wrap.ph .day-block-label .span { font-weight: 800; color: #3E423C; }
 .day-wrap.ph .day-empty-slot { border-radius: 8px; }
 .day-wrap.ph .day-empty-slot:hover { background: transparent; }
 .day-wrap.ph .day-split { left: -4px; right: -4px; }
-.day-wrap.ph .day-now { left: -50px; }
-.day-wrap.ph .day-now .line { left: 50px; }
 
 /* ── iPhone: окно отметки — тёмный нижний лист ── */
 .mark-pop.msheet { position: fixed; left: 0; right: 0; bottom: 0; top: auto; width: auto; border-radius: 28px 28px 0 0; padding: 8px 16px calc(24px + env(safe-area-inset-bottom)); gap: 4px; max-height: 88vh; overflow-y: auto; box-shadow: none; z-index: 81; }

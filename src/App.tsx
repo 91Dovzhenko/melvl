@@ -21,7 +21,7 @@ import { MomentsProvider } from './growth/Moments';
 import { AccountProvider } from './lib/account';
 import { Sidebar, useCreateList } from './shell/Sidebar';
 import { PhoneMenu } from './shell/PhoneMenu';
-import { EditingProvider, useEditing } from './tasks/editing';
+import { EditingProvider, WHEN_CARD_EVENT, WHEN_ROW_EVENT, useEditing } from './tasks/editing';
 import { TaskActionBar } from './tasks/actions';
 import { DndProvider } from './tasks/dnd';
 import { PhoneNewTask } from './tasks/PhoneNewTask';
@@ -69,6 +69,9 @@ const isField = (el: EventTarget | null) =>
  * Горячие клавиши. Новая задача: ⌘N (в Chrome-вкладке браузер забирает его себе — открывает окно),
  * поэтому запасные — N или Пробел вне полей ввода (раскладка не важна). Enter — раскрыть выделенную,
  * Delete — удалить, Esc — снять выделение.
+ * ⌘S (или Ctrl+S, по клавише — раскладка не важна) — окно «Когда», как в Things (24_ТЗ, п. 2): у открытой / новой задачи —
+ * у поля «Когда» карточки, у выделенной — у её строки. Окно браузера «Сохранить страницу» глушится всегда, во всём приложении;
+ * при открытом модальном окне или другом окне выбора, у шаблона повтора и без выделения — больше ничего не происходит.
  */
 function useShortcuts() {
   const ed = useEditing();
@@ -79,6 +82,14 @@ function useShortcuts() {
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.code === 'KeyN') {
         e.preventDefault();
         ed.requestNew();
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.code === 'KeyS') {
+        e.preventDefault();
+        if (document.querySelector('[aria-modal="true"], .pop, .sheet-scrim')) return;
+        if (ed.editingId || ed.draft) { window.dispatchEvent(new Event(WHEN_CARD_EVENT)); return; }
+        const sel = ed.selectedId ? store.tasks.find((t) => t.id === ed.selectedId) : null;
+        if (sel && !sel.is_template) window.dispatchEvent(new CustomEvent(WHEN_ROW_EVENT, { detail: sel.id }));
         return;
       }
       // Shift+⌘Y — выполненное в Журнал.

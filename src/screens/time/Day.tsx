@@ -7,7 +7,7 @@ import { useStore } from '../../lib/store';
 import { Icon } from '../../ui/icons';
 import { DatePicker } from '../../ui/DatePicker';
 import type { Anchor } from '../../ui/Pop';
-import { dayAdd, dayAfterTick, slotOfMin, slotTime, weekdayMon0 } from '../../lib/time/clock';
+import { dayAdd, dayAfterTick, slotOfMin, slotRange, slotTime, weekdayMon0 } from '../../lib/time/clock';
 import { fmtHM } from '../../lib/time/format';
 import { colorHex, tint } from '../../lib/time/palette';
 import {
@@ -413,9 +413,8 @@ export function DayView() {
         </div>
         {empty && <div className="day-empty">{isToday ? 'Новый день — отметок пока нет.' : 'В этот день отметок нет.'} Тапни слот и выбери, что было.</div>}
         <div className="day-wrap ph">
-          <div className="day-times" aria-hidden="true">
-            {Array.from({ length: SLOTS }, (_, i) => <span key={i} className={i % 2 ? 'half' : ''}>{slotTime(i)}</span>)}
-          </div>
+          <SlotTimes hide={nowSlot} />
+          {nowSlot >= 0 && <NowMark min={now.min} rowH={rowH} />}
           <div className="day-list" ref={listRef} onClick={onPhoneTap} role="grid" aria-label={`Слоты: ${dayTitle(date, now.date)}`}>
             {renderRows(shown, blocks, sel, catalog, rowH, true)}
             {split && (
@@ -425,11 +424,6 @@ export function DayView() {
               </>
             )}
             {selRuns.map((r) => <div key={r.start} className="day-sel" style={{ top: r.start * rowH, height: (r.end - r.start) * rowH }} aria-hidden="true" />)}
-            {nowSlot >= 0 && (
-              <div className="day-now" style={{ top: now.min / SLOT_MIN * rowH }} aria-label={`Сейчас ${nowText(now.min)}`}>
-                <span className="tag">{nowText(now.min)}</span><span className="line" />
-              </div>
-            )}
           </div>
         </div>
         {sheetEl}
@@ -468,11 +462,8 @@ export function DayView() {
       )}
 
       <div className="day-wrap">
-        <div className="day-times" aria-hidden="true">
-          {Array.from({ length: SLOTS }, (_, i) => (
-            <span key={i} className={i % 2 ? 'half' : ''}>{slotTime(i)}</span>
-          ))}
-        </div>
+        <SlotTimes hide={nowSlot} />
+        {nowSlot >= 0 && <NowMark min={now.min} rowH={rowH} />}
         <div className={'day-list' + (drag?.kind === 'fill' ? ' filling' : '')} ref={listRef} onMouseDown={onListDown}
           onMouseMove={(e) => { if (!selBlock) { if (hoverSel) setHoverSel(false); return; } const i = slotAt(e.clientY); const on = i >= selBlock.start - 1 && i <= selBlock.end; if (on !== hoverSel) setHoverSel(on); }}
           onMouseLeave={() => setHoverSel(false)}
@@ -497,12 +488,6 @@ export function DayView() {
           )}
           {preview && drag?.kind === 'fill' && (
             <span data-handle className="day-handle dark" style={{ top: (drag.edge === 'bottom' ? preview.end : preview.start) * rowH - 4 }} aria-hidden="true" />
-          )}
-          {nowSlot >= 0 && (
-            <div className="day-now" style={{ top: now.min / SLOT_MIN * rowH }} aria-label={`Сейчас ${nowText(now.min)}`}>
-              <span className="tag">{nowText(now.min)}</span>
-              <span className="dot" /><span className="line" />
-            </div>
           )}
 
           {popOpen && sel.length > 0 && (
@@ -572,5 +557,33 @@ function EndWheel({ start, end, onPick }: { start: number; end: number; onPick: 
       </div>
       <span className="mp-wheel-note">шаг 30 мин · до 24:00 · всё между заполнится</span>
     </div>
+  );
+}
+
+
+/** Колонка подписей слотов. Подпись слота с линией «сейчас» скрыта — на её месте метка времени. */
+function SlotTimes({ hide }: { hide: number }) {
+  return (
+    <div className="day-times" aria-hidden="true">
+      {Array.from({ length: SLOTS }, (_, i) => (
+        <span key={i} className={i % 2 ? 'half' : ''} style={i === hide ? { visibility: 'hidden' } : undefined}>{slotRange(i)}</span>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * «Сейчас»: метка «13:40» — в колонке на месте подписи своего слота (не выходит за его строку, чтобы не налезать
+ * на соседние подписи), линия — от края колонки до конца строки.
+ */
+function NowMark({ min, rowH }: { min: number; rowH: number }) {
+  const y = (min / SLOT_MIN) * rowH;
+  const slotTop = Math.floor(min / SLOT_MIN) * rowH;
+  const tagTop = slotTop + Math.max(0, Math.min(rowH - 18, y - slotTop - 9));
+  return (
+    <>
+      <span className="day-now-tag" style={{ top: tagTop }} role="img" aria-label={`Сейчас ${nowText(min)}`}>{nowText(min)}</span>
+      <div className="day-now" style={{ top: y }} aria-hidden="true"><span className="dot" /><span className="line" /></div>
+    </>
   );
 }

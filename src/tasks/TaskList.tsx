@@ -4,11 +4,11 @@ import { useStore, useToday } from '../lib/store';
 import { addDays, dueChip, fmtMin, shortDate } from '../lib/dates';
 import { projectName, skillOf } from '../lib/views';
 import { EstimatePicker, SkillGlyph, SkillPicker, WhenPicker } from './pickers';
-import { MovePicker, TaskContextMenu, useTaskActions } from './actions';
+import { MovePicker, TaskContextMenu, TaskPropPicker, useTaskActions } from './actions';
 import { RepeatDialog, templateOf } from './repeat';
 import { describe } from '../lib/repeat';
 import type { Task } from '../lib/types';
-import { useEditing } from './editing';
+import { WHEN_CARD_EVENT, WHEN_ROW_EVENT, useEditing } from './editing';
 import { useIsPhone } from '../ui/useIsPhone';
 import { hasLink, LinkText } from '../ui/LinkText';
 import { isNewTask } from '../lib/newTasks';
@@ -111,6 +111,14 @@ export function TaskRow({ task, mode, dragList }: { task: Task; mode: RowMode; d
   const sub = mode.showProject ? projectName(store, task.project_id) : '';
   const skill = skillOf(store, task).skill;
   const [menuAt, setMenuAt] = useState<{ x: number; y: number } | null>(null);
+  // ⌘S на выделенной задаче — то же окно «Когда», что в меню правого клика, у строки (24_ТЗ, п. 2).
+  const [whenOpen, setWhenOpen] = useState(false);
+  useEffect(() => {
+    if (phone) return;
+    const on = (e: Event) => { if ((e as CustomEvent<string>).detail === task.id) setWhenOpen(true); };
+    window.addEventListener(WHEN_ROW_EVENT, on);
+    return () => window.removeEventListener(WHEN_ROW_EVENT, on);
+  }, [phone, task.id]);
   // Тянуть можно и открытые, и выполненные (19_ТЗ, 6.1) — только на Mac и только в списке с перетаскиванием (в Журнале его нет).
   const startDrag = useDragSource(dragList ? { kind: 'task', id: task.id } : null, dragList ?? '');
   const isNew = !!mode.newDots && isNewTask(task, today, store.settings.today_ack_at);
@@ -164,6 +172,11 @@ export function TaskRow({ task, mode, dragList }: { task: Task; mode: RowMode; d
       <div ref={rowRef} className={'row row-mac' + (selected ? ' selected' : '')} onMouseEnter={placeSkill} {...rowEvents}
         data-dnd-row={dragList ? task.id : undefined} onPointerDown={dragList ? startDrag : undefined}>
         {menuAt && <TaskContextMenu task={task} at={menuAt} onClose={() => setMenuAt(null)} />}
+        {whenOpen && rowRef.current && (
+          // Под началом строки (у чекбокса и названия) — там, куда обычно кликают правой кнопкой.
+          <TaskPropPicker task={task} kind="when" onClose={() => setWhenOpen(false)}
+            anchor={{ x: rowRef.current.getBoundingClientRect().left + 8, y: rowRef.current.getBoundingClientRect().bottom + 4 }} />
+        )}
         <Checkbox task={task} size="mac" />
         {mode.logDate && <span className="log-date">{mode.logDate(task)}</span>}
         <div className="row-line one" style={{ opacity: done ? (mode.logDate ? 0.55 : 0.42) : 1 }}>
@@ -327,6 +340,25 @@ export function TaskCard({ task }: { task?: Task }) {
   const [pop, setPop] = useState<{ kind: PropKind; anchor: HTMLElement } | null>(null);
   const [repeatOpen, setRepeatOpen] = useState(() => !!task && ed.takePendingRepeat(task.id));
   const openPop = (kind: PropKind) => (e: React.MouseEvent<HTMLElement>) => setPop({ kind, anchor: e.currentTarget });
+  // ⌘S (24_ТЗ, п. 2): окно «Когда» у чипа срока или иконки «Когда»; после выбора / Esc курсор возвращается, где был.
+  const refocus = useRef<{ el: HTMLTextAreaElement; start: number; end: number } | null>(null);
+  useEffect(() => {
+    const on = () => {
+      const anchor = ref.current?.querySelector<HTMLElement>('[data-prop="when"]');
+      if (!anchor) return; // шаблон повтора — «Когда» нет
+      const a = document.activeElement;
+      refocus.current = a instanceof HTMLTextAreaElement && ref.current?.contains(a) ? { el: a, start: a.selectionStart, end: a.selectionEnd } : null;
+      setPop({ kind: 'when', anchor });
+    };
+    window.addEventListener(WHEN_CARD_EVENT, on);
+    return () => window.removeEventListener(WHEN_CARD_EVENT, on);
+  }, []);
+  const closePop = () => {
+    setPop(null);
+    const r = refocus.current;
+    refocus.current = null;
+    if (r && r.el.isConnected) requestAnimationFrame(() => { r.el.focus(); r.el.setSelectionRange(r.start, r.end); });
+  };
   const sk = skillOf(store, { skill_id: fields.skill_id ?? null, project_id: fields.project_id ?? null, no_skill: fields.no_skill });
   const inheritedSkill = skillOf(store, { skill_id: null, project_id: fields.project_id ?? null }).skill;
 
@@ -396,13 +428,13 @@ export function TaskCard({ task }: { task?: Task }) {
       <div className="card-foot">
         <div className="card-chips">
           {chips.map((c) => (
-            <button key={c.key} type="button" className={'prop-chip' + (c.cls ? ' ' + c.cls : '')} aria-label={`${c.label}: изменить`}
+            <button key={c.key} type="button" className={'prop-chip' + (c.cls ? ' ' + c.cls : '')} aria-label={`${c.label}: изменить`} data-prop={c.key}
               onClick={openPop(c.key)}>{c.node}</button>
           ))}
         </div>
         <div className="card-buttons">
           {unset.map((u) => (
-            <button key={u.key} type="button" className="prop-btn" aria-label={u.label} title={u.label} onClick={openPop(u.key)}>
+            <button key={u.key} type="button" className="prop-btn" aria-label={u.label} title={u.label} data-prop={u.key} onClick={openPop(u.key)}>
               <Icon name={u.icon} size={17} color="#3E423C" />
             </button>
           ))}
@@ -423,7 +455,7 @@ export function TaskCard({ task }: { task?: Task }) {
         <p className="no-skill-note">В проекте навык «{inheritedSkill!.name}», но эта задача — без навыка: часов не даёт.</p>
       )}
       {pop?.kind === 'when' && (
-        <WhenPicker anchor={pop.anchor} onClose={() => setPop(null)} onPick={set}
+        <WhenPicker anchor={pop.anchor} onClose={closePop} onPick={set}
           value={{ when_date: fields.when_date ?? null, when_evening: !!fields.when_evening, someday: !!fields.someday }} />
       )}
       {pop?.kind === 'est' && (
